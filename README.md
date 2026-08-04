@@ -15,7 +15,7 @@ La respuesta aparece en un popup configurable sin necesidad de cambiar de aplica
 - Analizar preguntas mediante una captura de pantalla.
 - Escuchar una pregunta y convertirla a texto.
 - Analizar fragmentos cortos de video.
-- Obtener respuestas mediante la API de OpenAI.
+- Obtener respuestas mediante la API de Gemini.
 - Copiar rápidamente la respuesta.
 - Informar sobre respuestas incorrectas o errores.
 - Cambiar la posición del popup.
