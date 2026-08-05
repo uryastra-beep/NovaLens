@@ -12,21 +12,21 @@ La aplicación permanece ejecutándose en segundo plano, puede abrirse mediante 
 
 ## Estado del proyecto
 
-- **Versión:** Beta 0.1.0
+- **Versión:** `v0.1.0-beta`
 - **Sistema compatible:** Windows
 - **Lenguaje:** Python
 - **Interfaz:** Flet
 - **Proveedor de IA:** Google Gemini
 
-NovaLens ya cuenta con un prototipo funcional conectado a la API de Gemini.
+Esta versión se distribuye como código fuente y está dirigida principalmente a desarrolladores, colaboradores y personas que quieran probar el proyecto.
 
 ---
 
 ## Funciones disponibles
 
 - Ejecución permanente en segundo plano.
-- Popup flotante siempre encima de las demás aplicaciones.
-- Integración real con Google Gemini.
+- Popup flotante siempre encima de otras aplicaciones.
+- Integración con Google Gemini.
 - Preguntas escritas directamente desde el popup.
 - Preguntas de seguimiento.
 - Contexto básico entre preguntas consecutivas.
@@ -40,7 +40,7 @@ NovaLens ya cuenta con un prototipo funcional conectado a la API de Gemini.
 - Botón para ocultar el popup.
 - Altura dinámica según el tamaño de la respuesta.
 - Scroll interno para respuestas largas.
-- Prevención de múltiples instancias de NovaLens.
+- Prevención de múltiples instancias.
 - Ejecución sin consola mediante `pythonw.exe`.
 
 ---
@@ -53,24 +53,26 @@ NovaLens ya cuenta con un prototipo funcional conectado a la API de Gemini.
 | Cerrar NovaLens completamente | `P + Backspace` |
 | Cerrar NovaLens completamente | `P + Delete` |
 
-Los atajos serán personalizables desde la futura interfaz de configuración.
+Los atajos serán personalizables desde una futura interfaz de configuración.
 
 ---
 
 ## Funcionamiento
 
-Al ejecutar NovaLens, la aplicación permanece en segundo plano esperando un atajo.
+Al ejecutar NovaLens, la aplicación permanece en segundo plano esperando una combinación de teclas.
 
 Cuando se presiona `P + Enter`:
 
 1. El popup aparece desde la parte superior.
 2. El usuario escribe una pregunta.
 3. NovaLens envía la solicitud a Google Gemini.
-4. La respuesta aparece en el mismo popup.
+4. La respuesta aparece dentro del mismo popup.
 5. El usuario puede realizar preguntas de seguimiento.
 6. Después de 10 segundos sin interacción, el popup desaparece.
 
-Cuando el popup pierde el foco, activa el modo click-through. Esto permite hacer clic y trabajar normalmente en la aplicación ubicada detrás del popup.
+Cuando el popup pierde el foco, activa automáticamente el modo click-through.
+
+Esto permite hacer clic y trabajar normalmente en la aplicación ubicada detrás del popup, aunque NovaLens continúe visible.
 
 Para volver a interactuar con NovaLens se presiona nuevamente `P + Enter`.
 
@@ -89,6 +91,8 @@ El diseño predeterminado incluye:
 - Margen respecto a los bordes del monitor.
 - Altura dinámica.
 - Altura máxima aproximada de 10 cm.
+- Animación de entrada tipo cortina.
+- Animación de salida mediante fade out.
 
 En futuras versiones será posible cambiar estos valores desde una interfaz de configuración.
 
@@ -111,17 +115,21 @@ NovaLens/
 ### Archivos principales
 
 - `main.py`: mantiene NovaLens activo en segundo plano y controla los atajos globales.
-- `popup.py`: contiene la interfaz flotante, animaciones, temporizador y click-through.
+- `popup.py`: contiene la interfaz flotante, las animaciones, el temporizador y el modo click-through.
 - `backend.py`: administra la conexión con Google Gemini.
-- `requirements.txt`: contiene las dependencias del proyecto.
-- `.env`: almacena la API key de Gemini.
+- `requirements.txt`: contiene las dependencias necesarias.
+- `.env`: almacena localmente la API key de Google Gemini.
 - `.gitignore`: evita subir archivos privados, temporales y entornos virtuales.
 
 > El archivo `.env` contiene información privada y nunca debe subirse a GitHub.
 
 ---
 
-## Instalación
+## Instalación para desarrolladores
+
+Actualmente, NovaLens Beta se distribuye como código fuente y todavía no cuenta con un instalador o archivo `.exe`.
+
+Estas instrucciones están dirigidas a desarrolladores o personas que quieran probar, estudiar o colaborar con el proyecto.
 
 ### 1. Clonar el repositorio
 
@@ -155,21 +163,23 @@ python -m pip install -r requirements.txt
 
 ## Configurar Google Gemini
 
-NovaLens necesita una API key de Google Gemini.
+Por razones de seguridad, NovaLens no incluye la API key utilizada por el desarrollador.
 
-Creá un archivo llamado `.env` dentro de la carpeta principal del proyecto:
+Cada persona que ejecute el proyecto desde el código fuente debe utilizar su propia API key de Google Gemini.
+
+Creá un archivo llamado `.env` dentro de la carpeta principal:
 
 ```env
-GEMINI_API_KEY=TU_API_KEY_DE_GEMINI
+GEMINI_API_KEY=TU_PROPIA_API_KEY
 ```
 
 No agregues comillas alrededor de la API key.
 
-Nunca publiques ni compartas el archivo `.env`.
+El archivo `.env` está excluido del repositorio mediante `.gitignore` y nunca debe publicarse.
 
 ---
 
-## Ejecutar NovaLens
+## Ejecutar NovaLens desde el código fuente
 
 ### Modo de desarrollo
 
@@ -185,7 +195,13 @@ La terminal permanecerá abierta mientras NovaLens esté funcionando.
 .\.venv\Scripts\pythonw.exe main.py
 ```
 
-En este modo NovaLens se ejecuta sin mostrar una terminal.
+En este modo NovaLens se ejecutará sin mostrar una terminal.
+
+Para abrir o reactivar el popup:
+
+```text
+P + Enter
+```
 
 Para cerrar NovaLens completamente:
 
@@ -241,6 +257,7 @@ Las futuras funciones de pantalla, audio y video deberán activarse mediante acc
 - El análisis de video todavía no está implementado.
 - El botón para informar errores todavía no envía reportes.
 - No existe todavía un instalador o ejecutable oficial.
+- Cada desarrollador debe utilizar su propia API key.
 - Las respuestas generadas por la IA pueden contener errores.
 
 ---
@@ -275,6 +292,26 @@ Las futuras funciones de pantalla, audio y video deberán activarse mediante acc
 - [ ] Inicio automático con Windows.
 - [ ] Creación de un ejecutable `.exe`.
 - [ ] Instalador para Windows.
+
+---
+
+## Release actual
+
+La primera versión beta pública está disponible como:
+
+```text
+v0.1.0-beta
+```
+
+Esta versión representa la primera base funcional de NovaLens.
+
+---
+
+## Contribuciones
+
+NovaLens todavía se encuentra en una etapa temprana de desarrollo.
+
+Las sugerencias, reportes de errores y contribuciones serán bienvenidas conforme avance el proyecto.
 
 ---
 
