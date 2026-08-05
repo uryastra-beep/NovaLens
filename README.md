@@ -335,6 +335,7 @@ Future screen, audio, and video features must be activated through explicit acti
 - [ ] Error-reporting system.
 - [ ] Windows `.exe` build.
 - [ ] Windows installer.
+- [ ] Native Linux version.
 
 ---
 
