@@ -9,27 +9,29 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import Callable
 
 import keyboard
 
+from config_manager import (
+    ARCHIVO_CONFIG,
+    CONFIGURACION_PREDETERMINADA,
+    cargar_configuracion,
+)
+
 
 # ══════════════════════════════════════════════
-# RUTAS Y ATAJOS
+# RUTAS
 # ══════════════════════════════════════════════
 
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_POPUP = CARPETA_PROYECTO / "popup.py"
+ARCHIVO_CONFIG_APP = CARPETA_PROYECTO / "config.py"
 
-ATAJO_ABRIR = "p+enter"
-ATAJO_CERRAR_BACKSPACE = "p+backspace"
-ATAJO_CERRAR_DELETE = "p+delete"
-
-# Archivo utilizado para enviar órdenes al popup residente.
 ARCHIVO_CONTROL = (
     Path(tempfile.gettempdir())
     / f"novalens_control_{os.getpid()}.json"
 )
-
 ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 
 
@@ -38,14 +40,18 @@ ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 # ══════════════════════════════════════════════
 
 proceso_popup: subprocess.Popen | None = None
+proceso_configuracion: subprocess.Popen | None = None
 
 bloqueo_estado = threading.Lock()
 bloqueo_control = threading.Lock()
+bloqueo_atajos = threading.Lock()
 
 novalens_cerrando = threading.Event()
 
 ultimo_atajo_abrir = 0.0
 mutex_instancia = None
+
+identificadores_atajos: list[object] = []
 
 
 # ══════════════════════════════════════════════
@@ -53,10 +59,6 @@ mutex_instancia = None
 # ══════════════════════════════════════════════
 
 def asegurar_instancia_unica() -> None:
-    """
-    Impide ejecutar NovaLens dos veces al mismo tiempo.
-    """
-
     global mutex_instancia
 
     if os.name != "nt":
@@ -70,10 +72,7 @@ def asegurar_instancia_unica() -> None:
 
     ERROR_ALREADY_EXISTS = 183
 
-    if (
-        ctypes.windll.kernel32.GetLastError()
-        == ERROR_ALREADY_EXISTS
-    ):
+    if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
         sys.exit(0)
 
 
@@ -82,14 +81,6 @@ def asegurar_instancia_unica() -> None:
 # ══════════════════════════════════════════════
 
 def enviar_comando(comando: str) -> None:
-    """
-    Escribe una orden para popup.py de forma atómica.
-
-    Comandos válidos:
-        activate
-        quit
-    """
-
     datos = {
         "id": time.time_ns(),
         "command": comando,
@@ -98,27 +89,18 @@ def enviar_comando(comando: str) -> None:
     with bloqueo_control:
         try:
             ARCHIVO_CONTROL_TEMPORAL.write_text(
-                json.dumps(
-                    datos,
-                    ensure_ascii=False,
-                ),
+                json.dumps(datos, ensure_ascii=False),
                 encoding="utf-8",
             )
-
             os.replace(
                 ARCHIVO_CONTROL_TEMPORAL,
                 ARCHIVO_CONTROL,
             )
-
         except OSError:
             pass
 
 
 def eliminar_archivos_control() -> None:
-    """
-    Elimina archivos temporales usados por NovaLens.
-    """
-
     for ruta in (
         ARCHIVO_CONTROL,
         ARCHIVO_CONTROL_TEMPORAL,
@@ -130,7 +112,7 @@ def eliminar_archivos_control() -> None:
 
 
 # ══════════════════════════════════════════════
-# CONTROL DEL PROCESO DEL POPUP
+# PROCESO DEL POPUP
 # ══════════════════════════════════════════════
 
 def popup_esta_ejecutandose() -> bool:
@@ -141,10 +123,6 @@ def popup_esta_ejecutandose() -> bool:
 
 
 def vigilar_popup(proceso: subprocess.Popen) -> None:
-    """
-    Detecta si popup.py terminó inesperadamente.
-    """
-
     global proceso_popup
 
     proceso.wait()
@@ -155,19 +133,11 @@ def vigilar_popup(proceso: subprocess.Popen) -> None:
 
 
 def iniciar_popup() -> None:
-    """
-    Inicia popup.py una sola vez.
-
-    Después se mantiene vivo y se oculta o muestra
-    mediante órdenes.
-    """
-
     global proceso_popup
 
     if not ARCHIVO_POPUP.exists():
         return
 
-    # popup.py inicia oculto y lee esta orden al arrancar.
     enviar_comando("activate")
 
     creation_flags = getattr(
@@ -186,31 +156,19 @@ def iniciar_popup() -> None:
             cwd=str(CARPETA_PROYECTO),
             creationflags=creation_flags,
         )
-
     except Exception:
         return
 
     proceso_popup = proceso
 
-    hilo = threading.Thread(
+    threading.Thread(
         target=vigilar_popup,
         args=(proceso,),
         daemon=True,
-    )
-
-    hilo.start()
+    ).start()
 
 
 def activar_popup() -> None:
-    """
-    P + Enter:
-
-    - Inicia el popup si todavía no existe.
-    - Si ya existe, lo reactiva.
-    - Desactiva el click-through.
-    - Lo devuelve al frente.
-    """
-
     global ultimo_atajo_abrir
 
     if novalens_cerrando.is_set():
@@ -218,7 +176,6 @@ def activar_popup() -> None:
 
     ahora = time.monotonic()
 
-    # Evita varias activaciones por mantener las teclas presionadas.
     if ahora - ultimo_atajo_abrir < 0.30:
         return
 
@@ -232,45 +189,219 @@ def activar_popup() -> None:
         iniciar_popup()
 
 
+def detener_popup_residente() -> None:
+    global proceso_popup
+
+    with bloqueo_estado:
+        proceso = proceso_popup
+
+    if proceso is None or proceso.poll() is not None:
+        return
+
+    enviar_comando("quit")
+
+    try:
+        proceso.wait(timeout=1.5)
+    except subprocess.TimeoutExpired:
+        try:
+            proceso.terminate()
+            proceso.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proceso.kill()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    with bloqueo_estado:
+        if proceso_popup is proceso:
+            proceso_popup = None
+
+
+# ══════════════════════════════════════════════
+# VENTANA DE CONFIGURACIÓN
+# ══════════════════════════════════════════════
+
+def vigilar_config_app(proceso: subprocess.Popen) -> None:
+    global proceso_configuracion
+
+    proceso.wait()
+
+    with bloqueo_estado:
+        if proceso_configuracion is proceso:
+            proceso_configuracion = None
+
+
+def abrir_configuracion() -> None:
+    global proceso_configuracion
+
+    if novalens_cerrando.is_set() or not ARCHIVO_CONFIG_APP.exists():
+        return
+
+    with bloqueo_estado:
+        if (
+            proceso_configuracion is not None
+            and proceso_configuracion.poll() is None
+        ):
+            return
+
+        creation_flags = getattr(
+            subprocess,
+            "CREATE_NO_WINDOW",
+            0,
+        )
+
+        try:
+            proceso = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ARCHIVO_CONFIG_APP),
+                ],
+                cwd=str(CARPETA_PROYECTO),
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return
+
+        proceso_configuracion = proceso
+
+    threading.Thread(
+        target=vigilar_config_app,
+        args=(proceso,),
+        daemon=True,
+    ).start()
+
+
+# ══════════════════════════════════════════════
+# ATAJOS DINÁMICOS
+# ══════════════════════════════════════════════
+
+def quitar_atajos_registrados() -> None:
+    global identificadores_atajos
+
+    for identificador in identificadores_atajos:
+        try:
+            keyboard.remove_hotkey(identificador)
+        except Exception:
+            pass
+
+    identificadores_atajos = []
+
+
+def agregar_atajo_seguro(
+    atajo: str,
+    predeterminado: str,
+    accion: Callable[[], None],
+    usados: set[str],
+) -> None:
+    candidatos = [atajo, predeterminado]
+
+    for candidato in candidatos:
+        candidato = candidato.strip().lower()
+
+        if not candidato or candidato in usados:
+            continue
+
+        try:
+            identificador = keyboard.add_hotkey(
+                candidato,
+                accion,
+                suppress=True,
+                trigger_on_release=True,
+            )
+        except Exception:
+            continue
+
+        identificadores_atajos.append(identificador)
+        usados.add(candidato)
+        return
+
+
+def registrar_atajos() -> None:
+    config = cargar_configuracion()
+    atajos = config["hotkeys"]
+    predeterminados = CONFIGURACION_PREDETERMINADA["hotkeys"]
+
+    with bloqueo_atajos:
+        quitar_atajos_registrados()
+
+        usados: set[str] = set()
+
+        agregar_atajo_seguro(
+            atajos["open"],
+            predeterminados["open"],
+            activar_popup,
+            usados,
+        )
+        agregar_atajo_seguro(
+            atajos["settings"],
+            predeterminados["settings"],
+            abrir_configuracion,
+            usados,
+        )
+        agregar_atajo_seguro(
+            atajos["close"],
+            predeterminados["close"],
+            cerrar_novalens,
+            usados,
+        )
+        agregar_atajo_seguro(
+            atajos["close_alt"],
+            predeterminados["close_alt"],
+            cerrar_novalens,
+            usados,
+        )
+
+
+def obtener_marca_config() -> int:
+    try:
+        return ARCHIVO_CONFIG.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def vigilar_cambios_configuracion() -> None:
+    ultima_marca = obtener_marca_config()
+
+    while not novalens_cerrando.wait(0.50):
+        marca_actual = obtener_marca_config()
+
+        if marca_actual == 0 or marca_actual == ultima_marca:
+            continue
+
+        ultima_marca = marca_actual
+
+        registrar_atajos()
+
+        # popup.py lee la configuración al iniciar.
+        # Al guardar ajustes cerramos el popup residente;
+        # la próxima vez que se abra usará los valores nuevos.
+        detener_popup_residente()
+
+
 # ══════════════════════════════════════════════
 # CERRAR NOVALENS COMPLETAMENTE
 # ══════════════════════════════════════════════
 
 def cerrar_novalens() -> None:
-    """
-    P + Backspace o P + Delete:
-
-    1. Ordena cerrar el popup.
-    2. Termina el proceso si no responde.
-    3. Quita los atajos.
-    4. Cierra NovaLens por completo.
-    """
-
-    global proceso_popup
+    global proceso_configuracion
 
     if novalens_cerrando.is_set():
         return
 
     novalens_cerrando.set()
 
-    enviar_comando("quit")
+    detener_popup_residente()
 
     with bloqueo_estado:
-        proceso = proceso_popup
+        proceso_config = proceso_configuracion
 
-    if proceso is not None and proceso.poll() is None:
+    if proceso_config is not None and proceso_config.poll() is None:
         try:
-            proceso.wait(timeout=1.5)
-
+            proceso_config.terminate()
+            proceso_config.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            try:
-                proceso.terminate()
-                proceso.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                proceso.kill()
-            except Exception:
-                pass
-
+            proceso_config.kill()
         except Exception:
             pass
 
@@ -280,7 +411,6 @@ def cerrar_novalens() -> None:
         pass
 
     eliminar_archivos_control()
-
     os._exit(0)
 
 
@@ -292,31 +422,18 @@ def main() -> None:
     asegurar_instancia_unica()
     eliminar_archivos_control()
 
-    keyboard.add_hotkey(
-        ATAJO_ABRIR,
-        activar_popup,
-        suppress=True,
-        trigger_on_release=True,
-    )
+    # Crea config.json automáticamente la primera vez.
+    cargar_configuracion()
 
-    keyboard.add_hotkey(
-        ATAJO_CERRAR_BACKSPACE,
-        cerrar_novalens,
-        suppress=True,
-        trigger_on_release=True,
-    )
+    registrar_atajos()
 
-    keyboard.add_hotkey(
-        ATAJO_CERRAR_DELETE,
-        cerrar_novalens,
-        suppress=True,
-        trigger_on_release=True,
-    )
+    threading.Thread(
+        target=vigilar_cambios_configuracion,
+        daemon=True,
+    ).start()
 
     try:
-        # NovaLens queda vivo sin consumir CPU constantemente.
         keyboard.wait()
-
     except KeyboardInterrupt:
         cerrar_novalens()
 

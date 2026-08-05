@@ -12,44 +12,51 @@ from pathlib import Path
 import flet as ft
 
 from backend import preguntar_a_novalens
+from config_manager import (
+    cargar_configuracion,
+    color_con_opacidad,
+    color_con_transparencia,
+)
 
 
 # ══════════════════════════════════════════════
-# APARIENCIA
+# CONFIGURACIÓN
 # ══════════════════════════════════════════════
 
-COLOR_PRINCIPAL = "#522E18"
+CONFIGURACION = cargar_configuracion()
+APARIENCIA = CONFIGURACION["appearance"]
+COMPORTAMIENTO = CONFIGURACION["behavior"]
 
-# 40 % de opacidad = 60 % de transparencia.
-COLOR_FONDO = "#66522E18"
+COLOR_PRINCIPAL = APARIENCIA["primary_color"]
+COLOR_FONDO = color_con_transparencia(
+    COLOR_PRINCIPAL,
+    APARIENCIA["transparency"],
+)
+COLOR_CAMPO = color_con_opacidad(COLOR_PRINCIPAL, 55)
 
-COLOR_CAMPO = "#88402012"
+COLOR_TEXTO = APARIENCIA["text_color"]
+COLOR_SECUNDARIO = APARIENCIA["secondary_color"]
+COLOR_BORDE = APARIENCIA["border_color"]
 
-COLOR_TEXTO = "#FFF4E8"
-COLOR_SECUNDARIO = "#E8C9B2"
-COLOR_BORDE = "#8A5738"
+TAMANO_FUENTE = APARIENCIA["font_size"]
+RADIO_BORDES = APARIENCIA["border_radius"]
+MARGEN_PANTALLA = APARIENCIA["margin"]
+POSICION_POPUP = APARIENCIA["position"]
 
-TAMANO_FUENTE = 16
-RADIO_BORDES = 20
-
-MARGEN_PANTALLA = 8
+TIEMPO_VISIBLE = COMPORTAMIENTO["visible_seconds"]
+CLICK_THROUGH_AL_PERDER_FOCO = COMPORTAMIENTO[
+    "click_through_on_blur"
+]
 
 ALTURA_MINIMA = 145
-
-# Aproximadamente 10 cm a 96 DPI.
 ALTURA_MAXIMA = 378
-
-
-# ══════════════════════════════════════════════
-# TIEMPOS Y ANIMACIONES
-# ══════════════════════════════════════════════
-
-TIEMPO_VISIBLE = 10
 
 DURACION_ENTRADA_MS = 550
 DURACION_SALIDA_MS = 650
 
-DESPLAZAMIENTO_INICIAL = -1.10
+DESPLAZAMIENTO_INICIAL = (
+    1.10 if POSICION_POPUP == "bottom" else -1.10
+)
 
 
 # ══════════════════════════════════════════════
@@ -75,10 +82,6 @@ RESPUESTA_INICIAL = (
 
 
 def limpiar_markdown_basico(texto: str) -> str:
-    """
-    Quita Markdown básico del texto generado.
-    """
-
     texto = re.sub(
         r"```(?:\w+)?\n?(.*?)```",
         r"\1",
@@ -126,6 +129,15 @@ def limpiar_markdown_basico(texto: str) -> str:
 # PANTALLA
 # ══════════════════════════════════════════════
 
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
 def preparar_dpi() -> None:
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -133,22 +145,40 @@ def preparar_dpi() -> None:
         pass
 
 
-def obtener_ancho_pantalla() -> int:
+def obtener_area_trabajo() -> tuple[int, int, int, int]:
     preparar_dpi()
 
-    return int(
-        ctypes.windll.user32.GetSystemMetrics(0)
-    )
+    if os.name == "nt":
+        rect = RECT()
+
+        try:
+            resultado = ctypes.windll.user32.SystemParametersInfoW(
+                0x0030,
+                0,
+                ctypes.byref(rect),
+                0,
+            )
+
+            if resultado:
+                return (
+                    int(rect.left),
+                    int(rect.top),
+                    int(rect.right - rect.left),
+                    int(rect.bottom - rect.top),
+                )
+        except Exception:
+            pass
+
+    ancho = int(ctypes.windll.user32.GetSystemMetrics(0))
+    alto = int(ctypes.windll.user32.GetSystemMetrics(1))
+
+    return 0, 0, ancho, alto
 
 
 def calcular_altura(
     texto: str,
     ancho: int,
 ) -> int:
-    """
-    Hace crecer el popup hasta un máximo de 10 cm.
-    """
-
     espacio_texto = max(
         ancho - 120,
         300,
@@ -193,11 +223,18 @@ def calcular_altura(
 # ══════════════════════════════════════════════
 
 async def main(page: ft.Page) -> None:
-    ancho_pantalla = obtener_ancho_pantalla()
+    izquierda_area, arriba_area, ancho_area, alto_area = (
+        obtener_area_trabajo()
+    )
 
-    ancho_popup = (
-        ancho_pantalla
-        - MARGEN_PANTALLA * 2
+    ancho_popup = max(
+        420,
+        ancho_area - MARGEN_PANTALLA * 2,
+    )
+
+    altura_actual = calcular_altura(
+        RESPUESTA_INICIAL,
+        ancho_popup,
     )
 
     respuesta_actual = RESPUESTA_INICIAL
@@ -212,6 +249,23 @@ async def main(page: ft.Page) -> None:
 
     temporizador: asyncio.Task | None = None
     tarea_control: asyncio.Task | None = None
+
+    def colocar_ventana(altura: int) -> None:
+        izquierda, arriba, ancho, alto = obtener_area_trabajo()
+
+        page.window.left = izquierda + MARGEN_PANTALLA
+        page.window.width = max(
+            420,
+            ancho - MARGEN_PANTALLA * 2,
+        )
+
+        if POSICION_POPUP == "bottom":
+            page.window.top = max(
+                arriba + MARGEN_PANTALLA,
+                arriba + alto - altura - MARGEN_PANTALLA,
+            )
+        else:
+            page.window.top = arriba + MARGEN_PANTALLA
 
     # ══════════════════════════════════════════
     # VENTANA
@@ -229,18 +283,12 @@ async def main(page: ft.Page) -> None:
     page.window.resizable = False
     page.window.shadow = False
 
-    page.window.left = MARGEN_PANTALLA
-    page.window.top = MARGEN_PANTALLA
-    page.window.width = ancho_popup
-    page.window.height = calcular_altura(
-        RESPUESTA_INICIAL,
-        ancho_popup,
-    )
-
+    page.window.height = altura_actual
     page.window.min_height = ALTURA_MINIMA
     page.window.max_height = ALTURA_MAXIMA
 
-    # Inicia oculto y con click-through.
+    colocar_ventana(altura_actual)
+
     page.window.visible = False
     page.window.ignore_mouse_events = True
 
@@ -298,10 +346,6 @@ async def main(page: ft.Page) -> None:
         temporizador = None
 
     async def ocultar_con_fade() -> None:
-        """
-        Oculta el popup, pero deja popup.py vivo.
-        """
-
         nonlocal popup_visible
         nonlocal numero_transicion
 
@@ -317,6 +361,14 @@ async def main(page: ft.Page) -> None:
         numero_transicion += 1
         transicion_actual = numero_transicion
 
+        # Liberar los clics ANTES de iniciar el fade.
+        # Así la ventana nunca deja una zona invisible bloqueando
+        # la parte superior de la pantalla.
+        page.window.ignore_mouse_events = True
+        page.update()
+
+        await asyncio.sleep(0.03)
+
         popup.opacity = 0
         popup.update()
 
@@ -324,16 +376,25 @@ async def main(page: ft.Page) -> None:
             DURACION_SALIDA_MS / 1000
         )
 
-        # Si P + Enter se presionó durante el fade,
-        # no ocultamos la ventana.
         if transicion_actual != numero_transicion:
             return
 
+        # Marcarla como oculta antes de tocar el foco para evitar
+        # que un evento FOCUS vuelva a activar la captura del mouse.
+        popup_visible = False
+
+        # Respaldo para Windows/Flet: mover la ventana fuera de la
+        # pantalla antes de ocultarla. Incluso si visible=False tarda
+        # en aplicarse, ya no puede interceptar clics.
         page.window.ignore_mouse_events = True
-        page.window.visible = False
+        page.window.left = -10000
+        page.window.top = -10000
         page.update()
 
-        popup_visible = False
+        await asyncio.sleep(0.03)
+
+        page.window.visible = False
+        page.update()
 
     async def cierre_automatico() -> None:
         try:
@@ -369,10 +430,6 @@ async def main(page: ft.Page) -> None:
     # ══════════════════════════════════════════
 
     async def activar_popup() -> None:
-        """
-        Desactiva click-through y devuelve el popup al frente.
-        """
-
         nonlocal popup_visible
         nonlocal numero_transicion
 
@@ -384,6 +441,12 @@ async def main(page: ft.Page) -> None:
         numero_transicion += 1
 
         estaba_oculto = not popup_visible
+
+        # Debe marcarse visible antes de solicitar foco; de lo
+        # contrario, el evento FOCUS podría dejarla en click-through.
+        popup_visible = True
+
+        colocar_ventana(int(page.window.height or ALTURA_MINIMA))
 
         page.window.visible = True
         page.window.ignore_mouse_events = False
@@ -397,8 +460,6 @@ async def main(page: ft.Page) -> None:
             pass
 
         if estaba_oculto:
-            popup_visible = True
-
             popup.offset = ft.Offset(
                 0,
                 DESPLAZAMIENTO_INICIAL,
@@ -438,16 +499,21 @@ async def main(page: ft.Page) -> None:
         e: ft.WindowEvent,
     ) -> None:
         if e.type == ft.WindowEventType.BLUR:
-            # El popup sigue visible, pero los clics
-            # atraviesan hacia VS Code, Zoom, etc.
-            page.window.ignore_mouse_events = True
+            page.window.ignore_mouse_events = (
+                CLICK_THROUGH_AL_PERDER_FOCO
+            )
             page.update()
 
         elif e.type == ft.WindowEventType.FOCUS:
-            page.window.ignore_mouse_events = False
-            page.update()
+            # Una ventana ya oculta nunca debe recuperar la captura
+            # del mouse por un evento de foco tardío de Windows.
+            if popup_visible:
+                page.window.ignore_mouse_events = False
+                reiniciar_temporizador()
+            else:
+                page.window.ignore_mouse_events = True
 
-            reiniciar_temporizador()
+            page.update()
 
     page.window.on_event = evento_ventana
 
@@ -501,6 +567,7 @@ async def main(page: ft.Page) -> None:
     async def enviar_pregunta(e=None) -> None:
         nonlocal procesando
         nonlocal respuesta_actual
+        nonlocal altura_actual
 
         if procesando or cerrando:
             return
@@ -571,10 +638,13 @@ async def main(page: ft.Page) -> None:
 
             mensaje_estado.value = "Respuesta lista."
 
-            page.window.height = calcular_altura(
+            altura_actual = calcular_altura(
                 respuesta_limpia,
-                ancho_popup,
+                int(page.window.width or ancho_popup),
             )
+
+            page.window.height = altura_actual
+            colocar_ventana(altura_actual)
 
         except Exception as error:
             respuesta_actual = (
@@ -596,8 +666,6 @@ async def main(page: ft.Page) -> None:
 
             page.update()
 
-            # Comienza a contar únicamente después
-            # de que Gemini terminó de responder.
             reiniciar_temporizador()
 
             try:
@@ -727,7 +795,7 @@ async def main(page: ft.Page) -> None:
             ft.Text(
                 "NovaLens",
                 color=COLOR_TEXTO,
-                size=18,
+                size=max(18, TAMANO_FUENTE + 2),
                 weight=ft.FontWeight.BOLD,
             ),
             ft.Text(
@@ -761,22 +829,21 @@ async def main(page: ft.Page) -> None:
         min_lines=1,
         max_lines=3,
 
-        # Enter envía; Shift + Enter crea otra línea.
         shift_enter=True,
 
-        border_radius=14,
+        border_radius=max(8, min(18, RADIO_BORDES - 4)),
         border_color=COLOR_BORDE,
         focused_border_color=COLOR_TEXTO,
         bgcolor=COLOR_CAMPO,
 
         text_style=ft.TextStyle(
             color=COLOR_TEXTO,
-            size=14,
+            size=max(12, TAMANO_FUENTE - 2),
         ),
 
         hint_style=ft.TextStyle(
             color=COLOR_SECUNDARIO,
-            size=14,
+            size=max(12, TAMANO_FUENTE - 2),
         ),
 
         cursor_color=COLOR_TEXTO,
@@ -900,14 +967,12 @@ async def main(page: ft.Page) -> None:
     page.add(detector_interacciones)
     page.update()
 
-    # Escucha permanentemente las órdenes de main.py.
     tarea_control = asyncio.create_task(
         escuchar_comandos()
     )
 
 
 if __name__ == "__main__":
-    # Inicia sin enseñar una ventana vacía.
     ft.run(
         main,
         view=ft.AppView.FLET_APP_HIDDEN,

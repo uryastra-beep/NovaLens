@@ -1,6 +1,10 @@
 # API key y variables privadas
 .env
 
+# Configuración local del usuario
+config.json
+config.tmp.json
+
 # Entorno virtual de Python
 .venv/
 venv/
