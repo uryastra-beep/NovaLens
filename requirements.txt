@@ -3,5 +3,4 @@ python-dotenv
 flet
 keyboard
 Pillow
-numpy
 sounddevice
