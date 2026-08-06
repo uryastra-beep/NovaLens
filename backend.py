@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,17 @@ ARCHIVO_ENV = CARPETA_PROYECTO / ".env"
 # Source-mode fallback. In the packaged build, launcher.py loads the user's
 # AppData environment before this module is imported.
 load_dotenv(ARCHIVO_ENV, override=False)
+
+# The packaged popup remains alive at zero opacity to avoid Flet's collapsed
+# viewport bug. A small Win32 watcher guarantees that this invisible window
+# cannot intercept mouse clicks.
+if os.name == "nt" and "popup_exe" in Path(sys.argv[0]).stem.lower():
+    try:
+        from native_clickthrough import start_native_clickthrough_watch
+
+        start_native_clickthrough_watch()
+    except Exception:
+        pass
 
 MODELO = "gemini-3.6-flash"
 
