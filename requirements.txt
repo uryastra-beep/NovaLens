@@ -1,6 +1,6 @@
 google-genai>=2.16.0,<3.0.0
 python-dotenv
-flet
+flet==0.86.5
 keyboard
 Pillow
 sounddevice
