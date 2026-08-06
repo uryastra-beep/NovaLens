@@ -556,7 +556,7 @@ async def main(page: ft.Page) -> None:
                         expand=True,
                     ),
                     ft.Text(
-                        "1.0.1 Dev",
+                        "1.0.1",
                         color=TEXTO,
                         bgcolor=ACENTO,
                         weight=ft.FontWeight.BOLD,
@@ -632,7 +632,7 @@ async def main(page: ft.Page) -> None:
             ),
             tarjeta(
                 "Comportamiento",
-                "Controlá cuánto dura visible y cómo responde al perder el foco.",
+                "Tiempo visible y comportamiento al perder el foco.",
                 [
                     ft.Row(
                         controls=[
@@ -645,8 +645,8 @@ async def main(page: ft.Page) -> None:
                 ],
             ),
             tarjeta(
-                "Atajos globales",
-                "Usá el formato tecla+tecla. Ejemplo: p+shift+enter.",
+                "Atajos de teclado",
+                "Usá el formato tecla+tecla. Los cambios se aplican al guardar.",
                 [
                     ft.Row(
                         controls=[atajo_abrir, atajo_config],
@@ -659,7 +659,7 @@ async def main(page: ft.Page) -> None:
                         spacing=12,
                     ),
                     ft.Text(
-                        "Atajo predeterminado para esta ventana: P + Shift + Enter",
+                        "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) todavía son fijos.",
                         size=12,
                         color=TEXTO_SECUNDARIO,
                     ),
@@ -667,23 +667,13 @@ async def main(page: ft.Page) -> None:
             ),
             tarjeta(
                 "Sistema",
-                "Opciones relacionadas con Windows.",
+                "Controlá cómo se inicia NovaLens en Windows.",
                 [inicio_windows],
             ),
             ft.Row(
-                controls=[
-                    boton_guardar,
-                    boton_restaurar,
-                    ft.Container(expand=True),
-                    ft.Text(
-                        "La configuración y las credenciales se guardan localmente.",
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
-                ],
-                spacing=12,
+                controls=[boton_guardar, boton_restaurar],
+                alignment=ft.MainAxisAlignment.END,
             ),
-            ft.Container(height=12),
         ],
         spacing=16,
         scroll=ft.ScrollMode.AUTO,
@@ -692,9 +682,6 @@ async def main(page: ft.Page) -> None:
 
     page.add(contenido)
     page.update()
-
-    await asyncio.sleep(0.05)
-    await page.window.center()
 
 
 if __name__ == "__main__":
