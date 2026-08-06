@@ -1,29 +1,24 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+
+from config_manager import cargar_api_key
 
 
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_ENV = CARPETA_PROYECTO / ".env"
 
-# Load the .env file located next to the source code.
-load_dotenv(ARCHIVO_ENV)
+# Source-mode fallback. In the packaged build, launcher.py loads the user's
+# AppData environment before this module is imported.
+load_dotenv(ARCHIVO_ENV, override=False)
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not API_KEY:
-    raise RuntimeError(
-        "No encontré GEMINI_API_KEY dentro del archivo .env."
-    )
-
-
-MODELO = "gemini-3.5-flash"
+MODELO = "gemini-3.6-flash"
 
 INSTRUCCIONES_NOVA_LENS = (
     "Sos Nova Lens, un asistente que responde preguntas escritas, "
@@ -35,34 +30,67 @@ INSTRUCCIONES_NOVA_LENS = (
 )
 
 
-client = genai.Client(api_key=API_KEY)
-CONFIGURACION_GENERACION = types.GenerateContentConfig(
-    system_instruction=INSTRUCCIONES_NOVA_LENS,
-)
+def _obtener_api_key() -> str:
+    """Read the latest BYOK key instead of caching it at import time."""
+
+    clave = cargar_api_key().strip()
+    if not clave:
+        clave = os.getenv("GEMINI_API_KEY", "").strip()
+
+    if not clave:
+        raise RuntimeError(
+            "No encontré una API key de Gemini. Abrí Settings y guardá una."
+        )
+
+    return clave
+
+
+def _crear_cliente() -> genai.Client:
+    return genai.Client(api_key=_obtener_api_key())
 
 
 def _extraer_texto(respuesta: object) -> str:
-    texto = getattr(respuesta, "text", None)
+    texto = getattr(respuesta, "output_text", None)
 
     if not texto:
-        texto = getattr(respuesta, "output_text", None)
+        texto = getattr(respuesta, "text", None)
 
     return str(texto or "").strip()
 
 
 def _mensaje_error(error: Exception) -> str:
+    detalle = str(error)
+
+    if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in detalle:
+        detalle = (
+            "Google rechazó la autenticación de la API key. "
+            "Verificá que la key siga activa en Google AI Studio y que esté "
+            "vinculada a un proyecto con Gemini API habilitada.\n\n"
+            f"Detalle original: {error}"
+        )
+
     return (
         "No pude obtener una respuesta de Gemini.\n\n"
         f"Tipo de error: {type(error).__name__}\n"
-        f"Detalle: {error}"
+        f"Detalle: {detalle}"
     )
 
 
-def _generar_contenido(contenido: Any) -> str:
-    respuesta = client.models.generate_content(
+def _texto_con_instrucciones(texto: str) -> str:
+    return (
+        f"Instrucciones de Nova Lens:\n{INSTRUCCIONES_NOVA_LENS}\n\n"
+        f"Solicitud del usuario:\n{texto}"
+    )
+
+
+def _generar_interaccion(entrada: Any) -> str:
+    """Call the current Gemini Interactions API used by auth (AQ.) keys."""
+
+    cliente = _crear_cliente()
+    respuesta = cliente.interactions.create(
         model=MODELO,
-        contents=contenido,
-        config=CONFIGURACION_GENERACION,
+        input=entrada,
+        store=False,
     )
     return _extraer_texto(respuesta)
 
@@ -76,7 +104,9 @@ def preguntar_a_novalens(pregunta: str) -> str:
         return "No detecté ninguna pregunta."
 
     try:
-        respuesta = _generar_contenido(pregunta)
+        respuesta = _generar_interaccion(
+            _texto_con_instrucciones(pregunta)
+        )
 
         if not respuesta:
             return "Gemini respondió, pero no devolvió texto."
@@ -103,13 +133,17 @@ def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
     )
 
     try:
-        texto = _generar_contenido(
+        texto = _generar_interaccion(
             [
-                types.Part.from_text(text=prompt),
-                types.Part.from_bytes(
-                    data=imagen_jpeg,
-                    mime_type="image/jpeg",
-                ),
+                {
+                    "type": "text",
+                    "text": _texto_con_instrucciones(prompt),
+                },
+                {
+                    "type": "image",
+                    "data": base64.b64encode(imagen_jpeg).decode("ascii"),
+                    "mime_type": "image/jpeg",
+                },
             ]
         )
         return texto or "Gemini analizó la pantalla, pero no devolvió texto."
@@ -135,13 +169,17 @@ def transcribir_y_responder_audio(audio_wav: bytes) -> str:
     )
 
     try:
-        texto = _generar_contenido(
+        texto = _generar_interaccion(
             [
-                types.Part.from_text(text=prompt),
-                types.Part.from_bytes(
-                    data=audio_wav,
-                    mime_type="audio/wav",
-                ),
+                {
+                    "type": "text",
+                    "text": _texto_con_instrucciones(prompt),
+                },
+                {
+                    "type": "audio",
+                    "data": base64.b64encode(audio_wav).decode("ascii"),
+                    "mime_type": "audio/wav",
+                },
             ]
         )
         return texto or "Gemini procesó el audio, pero no devolvió texto."
