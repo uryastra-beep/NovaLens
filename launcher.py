@@ -44,13 +44,13 @@ def load_user_environment() -> None:
     data = data_directory()
 
     candidates = [
-        base / ".env",
         data / ".env",
+        base / ".env",
     ]
 
     for path in candidates:
         if path.exists():
-            load_dotenv(path, override=False)
+            load_dotenv(path, override=True)
             return
 
 
@@ -66,6 +66,8 @@ def configure_runtime_paths() -> None:
     config_manager.ARCHIVO_CONFIG_TEMPORAL = (
         folder / "config.tmp.json"
     )
+    config_manager.ARCHIVO_ENV = folder / ".env"
+    config_manager.ARCHIVO_ENV_TEMPORAL = folder / ".env.tmp"
 
     def configure_windows_startup(enable: bool) -> None:
         if os.name != "nt":
