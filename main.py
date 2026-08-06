@@ -147,13 +147,11 @@ def vigilar_popup(proceso: subprocess.Popen) -> None:
             proceso_popup = None
 
 
-def iniciar_popup() -> None:
+def iniciar_popup() -> bool:
     global proceso_popup
 
     if not ARCHIVO_POPUP.exists():
-        return
-
-    enviar_comando("activate")
+        return False
 
     creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -168,15 +166,21 @@ def iniciar_popup() -> None:
             creationflags=creation_flags,
         )
     except Exception:
-        return
+        return False
 
     proceso_popup = proceso
+
+    # Write the activation command only after the child process exists.
+    # This prevents an older popup process from consuming the command.
+    enviar_comando("activate")
 
     threading.Thread(
         target=vigilar_popup,
         args=(proceso,),
         daemon=True,
     ).start()
+
+    return True
 
 
 def activar_popup() -> None:
@@ -190,14 +194,14 @@ def activar_popup() -> None:
     if ahora - ultimo_atajo_abrir < 0.30:
         return
 
-    ultimo_atajo_abrir = ahora
-
     with bloqueo_estado:
         if popup_esta_ejecutandose():
             enviar_comando("activate")
+            ultimo_atajo_abrir = ahora
             return
 
-        iniciar_popup()
+        if iniciar_popup():
+            ultimo_atajo_abrir = ahora
 
 
 def detener_popup_residente() -> None:
@@ -540,7 +544,7 @@ def agregar_atajo_seguro(
                 candidato,
                 accion,
                 suppress=True,
-                trigger_on_release=True,
+                trigger_on_release=False,
             )
         except Exception:
             continue
