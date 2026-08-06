@@ -80,10 +80,10 @@ def preguntar_a_novalens(pregunta: str) -> str:
         return _mensaje_error(error)
 
 
-def analizar_captura_pantalla(imagen_png: bytes) -> str:
-    """Detect visible questions in a PNG screenshot and answer them."""
+def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
+    """Detect visible questions in a JPEG screenshot and answer them."""
 
-    if not imagen_png:
+    if not imagen_jpeg:
         return "No pude capturar la pantalla."
 
     prompt = (
@@ -103,8 +103,8 @@ def analizar_captura_pantalla(imagen_png: bytes) -> str:
                 {"type": "text", "text": prompt},
                 {
                     "type": "image",
-                    "data": base64.b64encode(imagen_png).decode("utf-8"),
-                    "mime_type": "image/png",
+                    "data": base64.b64encode(imagen_jpeg).decode("utf-8"),
+                    "mime_type": "image/jpeg",
                 },
             ],
         )
