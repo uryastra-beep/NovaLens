@@ -20,8 +20,8 @@ $packArguments = @(
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
-    "--hidden-import", "popup", "config", "multimodal",
-    "--add-data", "popup.py;.", "config.py;.", "multimodal.py;."
+    "--hidden-import", "popup", "popup_exe", "config", "multimodal",
+    "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;."
 )
 
 $iconPath = Join-Path $PSScriptRoot "assets\NovaLens.ico"
