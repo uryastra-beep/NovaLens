@@ -7,11 +7,9 @@ import math
 import os
 import re
 import sys
-import wave
+from pathlib import Path
 
 import flet as ft
-import numpy as np
-import sounddevice as sd
 from PIL import ImageGrab
 
 from backend import analizar_captura_pantalla, transcribir_y_responder_audio
@@ -22,9 +20,17 @@ from config_manager import (
 
 
 if len(sys.argv) < 2 or sys.argv[1].lower() not in {"screen", "audio"}:
-    raise SystemExit("Uso: multimodal.py screen|audio")
+    raise SystemExit("Usage: multimodal.py screen|audio [audio-file]")
 
 MODO = sys.argv[1].lower()
+ARCHIVO_AUDIO: Path | None = None
+ERROR_AUDIO = ""
+
+if MODO == "audio":
+    if len(sys.argv) >= 4 and sys.argv[2] == "--error":
+        ERROR_AUDIO = sys.argv[3]
+    elif len(sys.argv) >= 3:
+        ARCHIVO_AUDIO = Path(sys.argv[2])
 
 CONFIGURACION = cargar_configuracion()
 APARIENCIA = CONFIGURACION["appearance"]
@@ -45,8 +51,6 @@ MARGEN_PANTALLA = APARIENCIA["margin"]
 POSICION_POPUP = APARIENCIA["position"]
 TIEMPO_VISIBLE = COMPORTAMIENTO["visible_seconds"]
 
-DURACION_AUDIO_SEGUNDOS = 10
-FRECUENCIA_AUDIO = 16000
 ALTURA_MINIMA = 150
 ALTURA_MAXIMA = 420
 DURACION_ENTRADA_MS = 420
@@ -150,29 +154,17 @@ def capturar_pantalla_jpeg() -> bytes:
         return buffer.getvalue()
 
 
-def grabar_audio_wav(duracion: int) -> bytes:
-    muestras = int(FRECUENCIA_AUDIO * duracion)
-    audio = sd.rec(
-        muestras,
-        samplerate=FRECUENCIA_AUDIO,
-        channels=1,
-        dtype="int16",
-    )
-    sd.wait()
-
-    if audio.size == 0:
+def leer_audio_temporal() -> bytes:
+    if ARCHIVO_AUDIO is None:
         return b""
 
-    datos_pcm = np.asarray(audio, dtype=np.int16).tobytes()
-
-    with io.BytesIO() as buffer:
-        with wave.open(buffer, "wb") as archivo_wav:
-            archivo_wav.setnchannels(1)
-            archivo_wav.setsampwidth(2)
-            archivo_wav.setframerate(FRECUENCIA_AUDIO)
-            archivo_wav.writeframes(datos_pcm)
-
-        return buffer.getvalue()
+    try:
+        return ARCHIVO_AUDIO.read_bytes()
+    finally:
+        try:
+            ARCHIVO_AUDIO.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 async def main(page: ft.Page) -> None:
@@ -208,7 +200,7 @@ async def main(page: ft.Page) -> None:
     cerrando = False
 
     texto_respuesta = ft.Text(
-        "Preparando…",
+        "Preparing…",
         color=COLOR_TEXTO,
         size=TAMANO_FUENTE,
         selectable=True,
@@ -226,7 +218,7 @@ async def main(page: ft.Page) -> None:
         visible=True,
     )
     texto_copiar = ft.Text(
-        "Copiar",
+        "Copy",
         color=COLOR_TEXTO,
         weight=ft.FontWeight.W_600,
     )
@@ -252,10 +244,10 @@ async def main(page: ft.Page) -> None:
     async def copiar(e=None) -> None:
         try:
             await ft.Clipboard().set(respuesta_actual)
-            texto_copiar.value = "Copiado"
-            mensaje_estado.value = "Respuesta copiada."
+            texto_copiar.value = "Copied"
+            mensaje_estado.value = "Response copied."
         except Exception:
-            mensaje_estado.value = "No pude copiar la respuesta."
+            mensaje_estado.value = "I could not copy the response."
 
         page.update()
 
@@ -288,12 +280,12 @@ async def main(page: ft.Page) -> None:
 
         respuesta_actual = (
             (texto or "").strip()
-            or "Gemini no devolvió texto."
+            or "Gemini did not return any text."
         )
         limpio = limpiar_markdown_basico(respuesta_actual)
         texto_respuesta.value = limpio
         indicador.visible = False
-        mensaje_estado.value = "Respuesta lista."
+        mensaje_estado.value = "Response ready."
 
         nueva_altura = calcular_altura(limpio, ancho_popup)
         page.window.height = nueva_altura
@@ -338,7 +330,7 @@ async def main(page: ft.Page) -> None:
             ft.TextButton(content=texto_copiar, on_click=copiar),
             ft.TextButton(
                 content=ft.Text(
-                    "Listo",
+                    "Done",
                     color=COLOR_TEXTO,
                     weight=ft.FontWeight.BOLD,
                 ),
@@ -388,9 +380,9 @@ async def main(page: ft.Page) -> None:
             # Capture before showing the popup so Nova Lens is not included.
             captura = await asyncio.to_thread(capturar_pantalla_jpeg)
             texto_respuesta.value = (
-                "Detectando la pregunta visible en la pantalla…"
+                "Detecting the question visible on the screen…"
             )
-            mensaje_estado.value = "Analizando pantalla…"
+            mensaje_estado.value = "Analyzing screen…"
             await mostrar_ventana()
             respuesta = await asyncio.to_thread(
                 analizar_captura_pantalla,
@@ -399,38 +391,25 @@ async def main(page: ft.Page) -> None:
 
         else:
             texto_respuesta.value = (
-                "Hablá ahora. Nova Lens grabará durante "
-                f"{DURACION_AUDIO_SEGUNDOS} segundos."
+                "Analyzing the previous 10 seconds of microphone audio…"
             )
-            mensaje_estado.value = (
-                f"Grabando… {DURACION_AUDIO_SEGUNDOS} s"
-            )
+            mensaje_estado.value = "Processing recent audio…"
             await mostrar_ventana()
 
-            tarea_audio = asyncio.create_task(
-                asyncio.to_thread(
-                    grabar_audio_wav,
-                    DURACION_AUDIO_SEGUNDOS,
-                )
-            )
+            if ERROR_AUDIO:
+                respuesta = ERROR_AUDIO
+            else:
+                audio = await asyncio.to_thread(leer_audio_temporal)
 
-            for restante in range(
-                DURACION_AUDIO_SEGUNDOS,
-                0,
-                -1,
-            ):
-                mensaje_estado.value = f"Grabando… {restante} s"
-                page.update()
-                await asyncio.sleep(1)
-
-            audio = await tarea_audio
-            texto_respuesta.value = "Transcribiendo y respondiendo…"
-            mensaje_estado.value = "Procesando audio…"
-            page.update()
-            respuesta = await asyncio.to_thread(
-                transcribir_y_responder_audio,
-                audio,
-            )
+                if not audio:
+                    respuesta = (
+                        "I could not find recent microphone audio to analyze."
+                    )
+                else:
+                    respuesta = await asyncio.to_thread(
+                        transcribir_y_responder_audio,
+                        audio,
+                    )
 
         await actualizar_resultado(respuesta)
         await asyncio.sleep(TIEMPO_VISIBLE)
@@ -439,9 +418,9 @@ async def main(page: ft.Page) -> None:
     except Exception as error:
         await mostrar_ventana()
         await actualizar_resultado(
-            "No pude completar la captura.\n\n"
-            f"Tipo de error: {type(error).__name__}\n"
-            f"Detalle: {error}"
+            "I could not complete the request.\n\n"
+            f"Error type: {type(error).__name__}\n"
+            f"Details: {error}"
         )
 
 
