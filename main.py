@@ -18,6 +18,7 @@ from config_manager import (
     CONFIGURACION_PREDETERMINADA,
     cargar_configuracion,
 )
+from rolling_audio import RollingAudioBuffer
 
 
 # ══════════════════════════════════════════════
@@ -38,6 +39,9 @@ ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 ATAJO_PANTALLA = "p+shift+s"
 ATAJO_AUDIO = "p+shift+a"
 
+DURACION_BUFFER_AUDIO = 10
+FRECUENCIA_AUDIO = 16_000
+
 
 # ══════════════════════════════════════════════
 # STATE
@@ -50,6 +54,7 @@ procesos_multimodales: dict[str, subprocess.Popen] = {}
 bloqueo_estado = threading.Lock()
 bloqueo_control = threading.Lock()
 bloqueo_atajos = threading.Lock()
+bloqueo_audio = threading.Lock()
 
 novalens_cerrando = threading.Event()
 
@@ -57,6 +62,14 @@ ultimo_atajo_abrir = 0.0
 mutex_instancia = None
 
 identificadores_atajos: list[object] = []
+archivos_audio_temporales: set[Path] = set()
+
+buffer_audio = RollingAudioBuffer(
+    duration_seconds=DURACION_BUFFER_AUDIO,
+    sample_rate=FRECUENCIA_AUDIO,
+    channels=1,
+)
+error_buffer_audio = ""
 
 
 # ══════════════════════════════════════════════
@@ -217,51 +230,141 @@ def detener_popup_residente() -> None:
 
 
 # ══════════════════════════════════════════════
+# ROLLING MICROPHONE BUFFER
+# ══════════════════════════════════════════════
+
+def iniciar_buffer_audio() -> bool:
+    global error_buffer_audio
+
+    if novalens_cerrando.is_set():
+        return False
+
+    with bloqueo_audio:
+        if buffer_audio.is_running:
+            return True
+
+        try:
+            buffer_audio.start()
+            error_buffer_audio = ""
+            return True
+        except Exception as error:
+            error_buffer_audio = (
+                "No pude iniciar el micrófono predeterminado de Windows. "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
+
+
+def detener_buffer_audio() -> None:
+    with bloqueo_audio:
+        buffer_audio.stop()
+
+
+def crear_archivo_audio_temporal(audio_wav: bytes) -> Path:
+    ruta = (
+        Path(tempfile.gettempdir())
+        / f"novalens_audio_{os.getpid()}_{time.time_ns()}.wav"
+    )
+    ruta.write_bytes(audio_wav)
+
+    with bloqueo_audio:
+        archivos_audio_temporales.add(ruta)
+
+    return ruta
+
+
+def eliminar_archivo_audio_temporal(ruta: Path | None) -> None:
+    if ruta is None:
+        return
+
+    try:
+        ruta.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    with bloqueo_audio:
+        archivos_audio_temporales.discard(ruta)
+
+
+def eliminar_todos_los_audios_temporales() -> None:
+    with bloqueo_audio:
+        rutas = list(archivos_audio_temporales)
+        archivos_audio_temporales.clear()
+
+    for ruta in rutas:
+        try:
+            ruta.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+# ══════════════════════════════════════════════
 # SCREEN AND AUDIO PROCESSES
 # ══════════════════════════════════════════════
 
-def vigilar_multimodal(modo: str, proceso: subprocess.Popen) -> None:
+def vigilar_multimodal(
+    modo: str,
+    proceso: subprocess.Popen,
+    archivo_audio: Path | None = None,
+) -> None:
     proceso.wait()
+
+    eliminar_archivo_audio_temporal(archivo_audio)
 
     with bloqueo_estado:
         if procesos_multimodales.get(modo) is proceso:
             procesos_multimodales.pop(modo, None)
 
 
-def abrir_multimodal(modo: str) -> None:
+def abrir_multimodal(
+    modo: str,
+    archivo_audio: Path | None = None,
+    error_audio: str = "",
+) -> None:
     if (
         novalens_cerrando.is_set()
         or modo not in {"screen", "audio"}
         or not ARCHIVO_MULTIMODAL.exists()
     ):
+        eliminar_archivo_audio_temporal(archivo_audio)
         return
 
     with bloqueo_estado:
         proceso_actual = procesos_multimodales.get(modo)
 
         if proceso_actual is not None and proceso_actual.poll() is None:
+            eliminar_archivo_audio_temporal(archivo_audio)
             return
+
+        argumentos = [
+            sys.executable,
+            str(ARCHIVO_MULTIMODAL),
+            modo,
+        ]
+
+        if modo == "audio":
+            if error_audio:
+                argumentos.extend(["--error", error_audio])
+            elif archivo_audio is not None:
+                argumentos.append(str(archivo_audio))
 
         creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
         try:
             proceso = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(ARCHIVO_MULTIMODAL),
-                    modo,
-                ],
+                argumentos,
                 cwd=str(CARPETA_PROYECTO),
                 creationflags=creation_flags,
             )
         except Exception:
+            eliminar_archivo_audio_temporal(archivo_audio)
             return
 
         procesos_multimodales[modo] = proceso
 
     threading.Thread(
         target=vigilar_multimodal,
-        args=(modo, proceso),
+        args=(modo, proceso, archivo_audio),
         daemon=True,
     ).start()
 
@@ -270,8 +373,66 @@ def analizar_pantalla() -> None:
     abrir_multimodal("screen")
 
 
-def grabar_pregunta_audio() -> None:
-    abrir_multimodal("audio")
+def responder_audio_anterior() -> None:
+    if novalens_cerrando.is_set():
+        return
+
+    with bloqueo_estado:
+        proceso_actual = procesos_multimodales.get("audio")
+        if proceso_actual is not None and proceso_actual.poll() is None:
+            return
+
+    if not iniciar_buffer_audio():
+        abrir_multimodal(
+            "audio",
+            error_audio=error_buffer_audio,
+        )
+        return
+
+    segundos_disponibles = buffer_audio.available_seconds()
+
+    if segundos_disponibles < 0.75:
+        abrir_multimodal(
+            "audio",
+            error_audio=(
+                "Nova Lens todavía no tiene suficiente audio en memoria. "
+                "Esperá un segundo y probá el atajo nuevamente."
+            ),
+        )
+        return
+
+    try:
+        audio_wav = buffer_audio.snapshot_wav()
+    except Exception as error:
+        abrir_multimodal(
+            "audio",
+            error_audio=(
+                "No pude preparar los últimos segundos de audio. "
+                f"{type(error).__name__}: {error}"
+            ),
+        )
+        return
+
+    if not audio_wav:
+        abrir_multimodal(
+            "audio",
+            error_audio="No encontré audio reciente para analizar.",
+        )
+        return
+
+    try:
+        archivo_audio = crear_archivo_audio_temporal(audio_wav)
+    except OSError as error:
+        abrir_multimodal(
+            "audio",
+            error_audio=(
+                "No pude preparar el audio temporal. "
+                f"{type(error).__name__}: {error}"
+            ),
+        )
+        return
+
+    abrir_multimodal("audio", archivo_audio=archivo_audio)
 
 
 def detener_procesos_multimodales() -> None:
@@ -290,6 +451,8 @@ def detener_procesos_multimodales() -> None:
             proceso.kill()
         except Exception:
             pass
+
+    eliminar_todos_los_audios_temporales()
 
 
 # ══════════════════════════════════════════════
@@ -432,7 +595,7 @@ def registrar_atajos() -> None:
         agregar_atajo_seguro(
             ATAJO_AUDIO,
             ATAJO_AUDIO,
-            grabar_pregunta_audio,
+            responder_audio_anterior,
             usados,
         )
 
@@ -475,6 +638,7 @@ def cerrar_novalens() -> None:
 
     detener_popup_residente()
     detener_procesos_multimodales()
+    detener_buffer_audio()
 
     with bloqueo_estado:
         proceso_config = proceso_configuracion
@@ -504,9 +668,13 @@ def cerrar_novalens() -> None:
 def main() -> None:
     asegurar_instancia_unica()
     eliminar_archivos_control()
+    eliminar_todos_los_audios_temporales()
 
     # Create config.json automatically on the first run.
     cargar_configuracion()
+
+    # Keep only the latest 10 seconds in RAM while Nova Lens is running.
+    iniciar_buffer_audio()
 
     registrar_atajos()
 
