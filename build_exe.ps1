@@ -2,6 +2,11 @@ $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
 
+$version = "1.0.1"
+$releaseName = "NovaLens-v$version-Windows-x64.zip"
+$releaseZip = Join-Path $PSScriptRoot $releaseName
+$checksumFile = "$releaseZip.sha256"
+
 Write-Host "Stopping running Nova Lens processes..."
 Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -37,9 +42,9 @@ function Remove-DirectoryWithRetry {
 Write-Host "Cleaning previous build output..."
 Remove-DirectoryWithRetry (Join-Path $PSScriptRoot "build")
 Remove-DirectoryWithRetry (Join-Path $PSScriptRoot "dist")
-
-$releaseZip = Join-Path $PSScriptRoot "NovaLens-v1.0.1-beta.1-Windows-x64.zip"
 Remove-Item $releaseZip -Force -ErrorAction SilentlyContinue
+Remove-Item $checksumFile -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $PSScriptRoot "NovaLens-v1.0.1-beta.1-Windows-x64.zip") -Force -ErrorAction SilentlyContinue
 
 Write-Host "Installing and upgrading runtime dependencies..."
 python -m pip install --upgrade -r requirements.txt
@@ -54,8 +59,8 @@ $packArguments = @(
     "-D",
     "-y",
     "--product-name", "Nova Lens",
-    "--product-version", "1.0.1.0",
-    "--file-version", "1.0.1.0",
+    "--product-version", "$version.0",
+    "--file-version", "$version.0",
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
@@ -70,33 +75,45 @@ if (Test-Path $iconPath) {
 }
 else {
     Write-Host "No custom icon found at assets\NovaLens.ico."
-    Write-Host "The test build will use the default icon."
+    Write-Host "The build will use the default application icon."
 }
 
-Write-Host "Building Nova Lens 1.0.1 test folder..."
+Write-Host "Building Nova Lens v$version for Windows x64..."
 flet @packArguments
 
 $distFolder = Join-Path $PSScriptRoot "dist\NovaLens"
 $executable = Join-Path $distFolder "NovaLens.exe"
+$internalFolder = Join-Path $distFolder "_internal"
 
 if (-not (Test-Path $executable)) {
     throw "The build finished, but NovaLens.exe was not found."
 }
 
-# A user key must never be shipped inside the release folder.
+if (-not (Test-Path $internalFolder)) {
+    throw "The build finished, but the required _internal folder was not found."
+}
+
+# Never ship user secrets, local settings, or debug files.
 Remove-Item (Join-Path $distFolder ".env") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "config.json") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $distFolder "config.tmp.json") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "debug.log") -Force -ErrorAction SilentlyContinue
 
-Write-Host "Creating the Windows release ZIP..."
+Write-Host "Creating the official Windows release ZIP..."
 Compress-Archive -Path $distFolder -DestinationPath $releaseZip -Force
+
+$hash = (Get-FileHash -Path $releaseZip -Algorithm SHA256).Hash.ToLowerInvariant()
+"$hash  $releaseName" | Set-Content -Path $checksumFile -Encoding ascii
 
 Write-Host ""
 Write-Host "Build complete:"
 Write-Host $executable
 Write-Host ""
-Write-Host "Release ZIP ready:"
+Write-Host "Official release package:"
 Write-Host $releaseZip
 Write-Host ""
-Write-Host "Open NovaLens.exe and add your own Gemini API key in Settings."
-Write-Host "Nova Lens stores the key locally in the user's AppData folder."
+Write-Host "SHA-256 checksum:"
+Write-Host $checksumFile
+Write-Host ""
+Write-Host "Extract the ZIP before opening NovaLens.exe."
+Write-Host "Nova Lens stores the user's API key and settings locally in AppData."
