@@ -10,6 +10,9 @@ import flet as ft
 import popup
 
 
+WINDOW_TITLE = "Nova Lens"
+
+
 class RECT(ctypes.Structure):
     _fields_ = [
         ("left", ctypes.c_long),
@@ -88,15 +91,38 @@ def obtener_area_trabajo_virtual() -> tuple[int, int, int, int]:
     )
 
 
-def encontrar_ventana_del_proceso() -> int | None:
-    """Find the top-level native window owned by this popup process."""
+def obtener_titulo_ventana(hwnd: int) -> str:
+    if os.name != "nt":
+        return ""
+
+    user32 = ctypes.windll.user32
+
+    try:
+        longitud = int(user32.GetWindowTextLengthW(hwnd))
+        buffer = ctypes.create_unicode_buffer(max(longitud + 1, 2))
+        user32.GetWindowTextW(hwnd, buffer, len(buffer))
+        return buffer.value.strip()
+    except Exception:
+        return ""
+
+
+def encontrar_ventana_novalens() -> int | None:
+    """Find the Flet window even when it belongs to another process.
+
+    In packaged Flet apps, the desktop window can be owned by the Flet client
+    process instead of the Python child process. Selecting only windows owned
+    by os.getpid() therefore misses the real popup and leaves the collapsed
+    native window untouched.
+    """
 
     if os.name != "nt":
         return None
 
     user32 = ctypes.windll.user32
     process_id = os.getpid()
-    candidatos: list[tuple[int, int]] = []
+    candidatos_titulo_visibles: list[tuple[int, int]] = []
+    candidatos_titulo: list[tuple[int, int]] = []
+    candidatos_proceso: list[tuple[int, int]] = []
 
     callback_type = ctypes.WINFUNCTYPE(
         wintypes.BOOL,
@@ -106,13 +132,8 @@ def encontrar_ventana_del_proceso() -> int | None:
 
     @callback_type
     def enumerar(hwnd, _lparam):
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-
-        if pid.value != process_id:
-            return True
-
         rect = RECT()
+
         if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
             return True
 
@@ -120,8 +141,25 @@ def encontrar_ventana_del_proceso() -> int | None:
         alto = max(0, int(rect.bottom - rect.top))
         area = ancho * alto
 
-        if area > 0:
-            candidatos.append((area, int(hwnd)))
+        if area <= 0:
+            return True
+
+        titulo = obtener_titulo_ventana(int(hwnd))
+        visible = bool(user32.IsWindowVisible(hwnd))
+
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+        candidato = (area, int(hwnd))
+
+        if titulo == WINDOW_TITLE:
+            candidatos_titulo.append(candidato)
+
+            if visible:
+                candidatos_titulo_visibles.append(candidato)
+
+        if pid.value == process_id:
+            candidatos_proceso.append(candidato)
 
         return True
 
@@ -130,11 +168,16 @@ def encontrar_ventana_del_proceso() -> int | None:
     except Exception:
         return None
 
-    if not candidatos:
-        return None
+    for candidatos in (
+        candidatos_titulo_visibles,
+        candidatos_titulo,
+        candidatos_proceso,
+    ):
+        if candidatos:
+            candidatos.sort(reverse=True)
+            return candidatos[0][1]
 
-    candidatos.sort(reverse=True)
-    return candidatos[0][1]
+    return None
 
 
 def forzar_geometria_nativa(page: ft.Page) -> bool:
@@ -143,7 +186,8 @@ def forzar_geometria_nativa(page: ft.Page) -> bool:
     if os.name != "nt":
         return False
 
-    hwnd = encontrar_ventana_del_proceso()
+    hwnd = encontrar_ventana_novalens()
+
     if not hwnd:
         return False
 
@@ -174,10 +218,16 @@ def forzar_geometria_nativa(page: ft.Page) -> bool:
     )
     alto_objetivo = round(alto_virtual * escala)
 
-    ancho_objetivo = max(420, min(ancho_objetivo, ancho_area - margen * 2))
+    ancho_disponible = max(420, ancho_area - margen * 2)
+    alto_disponible = max(
+        round(popup.ALTURA_MINIMA * escala),
+        alto_area - margen * 2,
+    )
+
+    ancho_objetivo = max(420, min(ancho_objetivo, ancho_disponible))
     alto_objetivo = max(
         round(popup.ALTURA_MINIMA * escala),
-        min(alto_objetivo, alto_area - margen * 2),
+        min(alto_objetivo, alto_disponible),
     )
 
     x = izquierda + margen
@@ -191,6 +241,7 @@ def forzar_geometria_nativa(page: ft.Page) -> bool:
     SWP_NOACTIVATE = 0x0010
     SWP_NOOWNERZORDER = 0x0200
     SWP_FRAMECHANGED = 0x0020
+    SWP_SHOWWINDOW = 0x0040
 
     try:
         resultado = ctypes.windll.user32.SetWindowPos(
@@ -200,7 +251,10 @@ def forzar_geometria_nativa(page: ft.Page) -> bool:
             int(y),
             int(ancho_objetivo),
             int(alto_objetivo),
-            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+            SWP_NOACTIVATE
+            | SWP_NOOWNERZORDER
+            | SWP_FRAMECHANGED
+            | SWP_SHOWWINDOW,
         )
         return bool(resultado)
     except Exception:
