@@ -2,8 +2,11 @@ $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
 
-Write-Host "Installing build dependencies..."
-python -m pip install -r requirements-build.txt
+Write-Host "Installing and upgrading runtime dependencies..."
+python -m pip install --upgrade -r requirements.txt
+
+Write-Host "Installing and upgrading build dependencies..."
+python -m pip install --upgrade -r requirements-build.txt
 
 $packArguments = @(
     "pack",
