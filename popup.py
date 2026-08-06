@@ -7,6 +7,7 @@ import math
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import flet as ft
@@ -53,7 +54,11 @@ ALTURA_MAXIMA = 378
 
 DURACION_ENTRADA_MS = 550
 DURACION_SALIDA_MS = 650
-RETRASO_OCULTAR_POR_BLUR = 0.16
+RETRASO_OCULTAR_POR_BLUR = 0.18
+PROTECCION_BLUR_AL_ABRIR = (
+    DURACION_ENTRADA_MS / 1000
+    + 0.25
+)
 
 DESPLAZAMIENTO_INICIAL = (
     1.10 if POSICION_POPUP == "bottom" else -1.10
@@ -190,6 +195,7 @@ def calcular_altura(texto: str, ancho: int) -> int:
     )
 
     lineas = 0
+
     for parrafo in texto.splitlines() or [""]:
         lineas += max(
             1,
@@ -224,6 +230,8 @@ async def main(page: ft.Page) -> None:
 
     ultimo_comando_id = -1
     numero_transicion = 0
+    generacion_activacion = 0
+    proteger_blur_hasta = 0.0
 
     temporizador: asyncio.Task | None = None
     tarea_ocultar_blur: asyncio.Task | None = None
@@ -329,9 +337,12 @@ async def main(page: ft.Page) -> None:
         cancelar_tarea(tarea_ocultar_blur)
         tarea_ocultar_blur = None
 
-    async def ocultar_con_fade() -> None:
+    async def ocultar_con_fade(
+        generacion_esperada: int | None = None,
+    ) -> None:
         nonlocal popup_visible
         nonlocal ocultando
+        nonlocal ventana_enfocada
         nonlocal numero_transicion
 
         if (
@@ -342,12 +353,19 @@ async def main(page: ft.Page) -> None:
         ):
             return
 
+        if (
+            generacion_esperada is not None
+            and generacion_esperada != generacion_activacion
+        ):
+            return
+
         cancelar_temporizador()
         cancelar_ocultado_por_blur()
 
         ocultando = True
         numero_transicion += 1
         transicion_actual = numero_transicion
+        generacion_actual = generacion_activacion
 
         popup.opacity = 0
         popup.update()
@@ -358,12 +376,17 @@ async def main(page: ft.Page) -> None:
             ocultando = False
             return
 
-        if transicion_actual != numero_transicion or cerrando:
+        if (
+            transicion_actual != numero_transicion
+            or generacion_actual != generacion_activacion
+            or cerrando
+        ):
             ocultando = False
             return
 
         popup_visible = False
         ocultando = False
+        ventana_enfocada = False
 
         page.window.visible = False
         page.window.ignore_mouse_events = True
@@ -372,12 +395,17 @@ async def main(page: ft.Page) -> None:
         aplicar_geometria(altura_actual)
         page.update()
 
-    async def cierre_automatico() -> None:
+    async def cierre_automatico(
+        generacion_programada: int,
+    ) -> None:
         try:
             await asyncio.sleep(TIEMPO_VISIBLE)
 
-            if not procesando:
-                await ocultar_con_fade()
+            if (
+                generacion_programada == generacion_activacion
+                and not procesando
+            ):
+                await ocultar_con_fade(generacion_programada)
         except asyncio.CancelledError:
             return
 
@@ -393,11 +421,21 @@ async def main(page: ft.Page) -> None:
             return
 
         cancelar_temporizador()
-        temporizador = asyncio.create_task(cierre_automatico())
+        temporizador = asyncio.create_task(
+            cierre_automatico(generacion_activacion)
+        )
 
-    async def ocultar_despues_de_blur() -> None:
+    async def ocultar_despues_de_blur(
+        generacion_programada: int,
+    ) -> None:
         try:
             await asyncio.sleep(RETRASO_OCULTAR_POR_BLUR)
+
+            if generacion_programada != generacion_activacion:
+                return
+
+            if time.monotonic() < proteger_blur_hasta:
+                return
 
             if (
                 OCULTAR_AL_PERDER_FOCO
@@ -405,8 +443,9 @@ async def main(page: ft.Page) -> None:
                 and not ventana_enfocada
                 and not procesando
                 and not cerrando
+                and not ocultando
             ):
-                await ocultar_con_fade()
+                await ocultar_con_fade(generacion_programada)
         except asyncio.CancelledError:
             return
 
@@ -422,6 +461,8 @@ async def main(page: ft.Page) -> None:
         nonlocal ocultando
         nonlocal ventana_enfocada
         nonlocal numero_transicion
+        nonlocal generacion_activacion
+        nonlocal proteger_blur_hasta
 
         if cerrando:
             return
@@ -429,11 +470,17 @@ async def main(page: ft.Page) -> None:
         cancelar_temporizador()
         cancelar_ocultado_por_blur()
 
+        generacion_activacion += 1
         numero_transicion += 1
+        activacion_actual = generacion_activacion
+
         ocultando = False
         estaba_oculto = not popup_visible
         popup_visible = True
         ventana_enfocada = True
+        proteger_blur_hasta = (
+            time.monotonic() + PROTECCION_BLUR_AL_ABRIR
+        )
 
         aplicar_geometria(altura_actual)
 
@@ -449,6 +496,10 @@ async def main(page: ft.Page) -> None:
         page.update()
 
         await asyncio.sleep(0.05)
+
+        if activacion_actual != generacion_activacion:
+            return
+
         aplicar_geometria(altura_actual)
         page.window.ignore_mouse_events = False
         page.window.focused = True
@@ -459,13 +510,27 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
+        if activacion_actual != generacion_activacion:
+            return
+
         if estaba_oculto:
             popup.opacity = 1
             popup.offset = ft.Offset(0, 0)
             popup.update()
-            await asyncio.sleep(DURACION_ENTRADA_MS / 1000)
+
+            try:
+                await asyncio.sleep(DURACION_ENTRADA_MS / 1000)
+            except asyncio.CancelledError:
+                return
         else:
             popup.update()
+
+        if activacion_actual != generacion_activacion:
+            return
+
+        ventana_enfocada = True
+        page.window.ignore_mouse_events = False
+        page.update()
 
         if not procesando:
             reiniciar_temporizador()
@@ -486,18 +551,28 @@ async def main(page: ft.Page) -> None:
         if e.type == ft.WindowEventType.BLUR:
             ventana_enfocada = False
 
+            # Never leave a visible popup in click-through mode.
             page.window.ignore_mouse_events = False
             page.update()
+
+            # Windows/Flet may deliver a delayed BLUR from the previous
+            # hide cycle immediately after reopening. Ignore BLUR events
+            # during this short activation guard.
+            if time.monotonic() < proteger_blur_hasta:
+                return
 
             if (
                 OCULTAR_AL_PERDER_FOCO
                 and popup_visible
                 and not procesando
                 and not cerrando
+                and not ocultando
             ):
                 cancelar_ocultado_por_blur()
                 tarea_ocultar_blur = asyncio.create_task(
-                    ocultar_despues_de_blur()
+                    ocultar_despues_de_blur(
+                        generacion_activacion
+                    )
                 )
 
         elif e.type == ft.WindowEventType.FOCUS:
@@ -523,7 +598,8 @@ async def main(page: ft.Page) -> None:
         nueva_pregunta: str,
     ) -> str:
         partes = [
-            "El usuario está haciendo una pregunta desde el popup de Nova Lens."
+            "El usuario está haciendo una pregunta "
+            "desde el popup de Nova Lens."
         ]
 
         for numero, (pregunta, respuesta) in enumerate(
@@ -662,7 +738,7 @@ async def main(page: ft.Page) -> None:
             page.update()
             return
 
-        await ocultar_con_fade()
+        await ocultar_con_fade(generacion_activacion)
 
     # ══════════════════════════════════════════
     # CLOSE PROCESS
