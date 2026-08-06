@@ -67,9 +67,16 @@ def obtener_area_trabajo_virtual() -> tuple[int, int, int, int]:
     return 0, 0, ancho, alto
 
 
-# popup.py is also used directly during development. Override geometry only
-# for the packaged child process so the source workflow remains unchanged.
+# popup.py is also used directly during development. Override packaged-only
+# behavior so the source workflow remains unchanged.
 popup.obtener_area_trabajo = obtener_area_trabajo_virtual
+
+# In the packaged Flet app, the slide offset can occasionally remain at its
+# hidden position after an interrupted animation. The window keeps its normal
+# size, but almost the entire popup content is translated outside the window,
+# leaving only a thin strip visible. Keep the fade animation and disable only
+# the packaged slide translation.
+popup.DESPLAZAMIENTO_INICIAL = 0.0
 
 
 if __name__ == "__main__":
