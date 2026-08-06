@@ -2,364 +2,287 @@
 
 **Nova Lens — Powered by Google Gemini**
 
-Nova Lens is a Windows desktop assistant that lets you ask an AI questions from any application through a floating popup.
+Nova Lens is a Windows desktop AI assistant that runs in the background and gives you fast access to Google Gemini from any application.
 
-The app runs in the background, can be opened with global hotkeys, can detect questions visible on the screen, and can transcribe and answer recent spoken questions.
+Use a floating popup for text questions, analyze the visible desktop, or ask about something spoken during the previous 10 seconds.
 
-> Nova Lens is currently in **Beta**.
+## Current Release
 
----
-
-## Project Status
-
-- **Latest public release:** `v0.2.0-beta`
-- **Development branch:** includes experimental screen and rolling-audio support
-- **Supported platform:** Windows
-- **Language:** Python
-- **Interface:** Flet
+- **Version:** `v1.0.1`
+- **Platform:** Windows x64
+- **Download:** `NovaLens-v1.0.1-Windows-x64.zip`
 - **AI provider:** Google Gemini
+- **License:** No project license has been selected yet
 
-Nova Lens is currently distributed as source code and is intended mainly for developers, collaborators, and early testers.
+## Download and Install
 
----
+1. Open the latest release on GitHub.
+2. Download `NovaLens-v1.0.1-Windows-x64.zip`.
+3. Extract the entire ZIP file.
+4. Keep `NovaLens.exe` and the `_internal` folder together.
+5. Open `NovaLens.exe`.
+6. Add your own Gemini API key in Settings and save it.
 
-## Available Features
+Do not run the executable directly from inside the ZIP file.
 
-- Persistent background execution.
-- Always-on-top floating popup.
-- Google Gemini integration.
-- Questions written directly inside the popup.
-- Follow-up questions.
-- Basic context between consecutive questions.
-- Full-screen question detection.
-- Automatic screenshot analysis with Gemini.
+Windows may display a SmartScreen warning because Nova Lens is not currently code-signed.
+
+## First Launch
+
+Nova Lens uses a bring-your-own-key system. The application does not include a shared Gemini API key.
+
+On first launch, open Settings and paste your own Google Gemini API key. Nova Lens stores it locally at:
+
+```text
+%APPDATA%\NovaLens\.env
+```
+
+User settings are stored locally at:
+
+```text
+%APPDATA%\NovaLens\config.json
+```
+
+Neither file is included in the release package or committed to this repository.
+
+## Features
+
+- Background execution without a visible console window.
+- Always-on-top floating text popup.
+- Text questions and follow-up questions.
+- Short conversation context inside the popup.
+- Full visible-desktop screenshot analysis.
 - Rolling 10-second microphone buffer stored in memory.
 - Audio transcription followed by an automatic answer.
-- Global hotkeys.
-- Entry and fade-out animations.
+- Entry and fade-out popup animations.
 - Automatic hiding after inactivity.
-- Timer reset when typing, clicking, or scrolling.
-- Automatic click-through when the text popup loses focus.
-- Button to copy responses.
-- Dynamic height based on response length.
-- Internal scrolling for long responses.
-- Prevention of multiple Nova Lens instances.
-- Background execution without a console through `pythonw.exe`.
-- Graphical settings interface.
-- Persistent settings through `config.json`.
-- Customizable colors and transparency.
-- Configurable font size, border radius, margin, and popup position.
+- Click-through behavior after the popup loses focus.
+- Dynamic popup height and scrolling for long responses.
+- Copy-response button.
+- Prevention of multiple Nova Lens background instances.
+- Graphical Settings interface.
+- Custom colors, transparency, font size, border radius, margin, and popup position.
 - Configurable auto-hide timer.
-- Customizable text-popup hotkeys.
+- Customizable text-popup and close hotkeys.
 - Optional startup with Windows.
-
----
+- Local API-key and settings storage.
 
 ## Default Hotkeys
 
 | Action | Hotkey |
 |---|---|
 | Open or reactivate the text popup | `P + Enter` |
-| Open Nova Lens settings | `P + Shift + Enter` |
-| Analyze the visible screen | `P + Shift + S` |
-| Transcribe and answer the previous 10 seconds of audio | `P + Shift + A` |
+| Open Settings | `P + Shift + Enter` |
+| Analyze the visible desktop | `P + Shift + S` |
+| Transcribe and answer the previous 10 seconds of microphone audio | `P + Shift + A` |
 | Completely close Nova Lens | `P + Backspace` |
-| Completely close Nova Lens | `P + Delete` |
+| Alternative close shortcut | `P + Delete` |
 
-The text-popup, settings, and close hotkeys can be changed from the settings interface.
+The text-popup, Settings, and close shortcuts can be changed from the Settings interface.
 
-The screen and audio hotkeys are currently fixed while the multimodal system is still experimental.
+The screen and audio shortcuts are fixed in v1.0.1.
 
----
+## How the Main Modes Work
 
-## How It Works
+### Text popup
 
-### Text questions
+Press `P + Enter`, write a question, and press Enter or click **Enviar**. Nova Lens sends the request to Gemini and displays the answer inside the same popup.
 
-When `P + Enter` is pressed:
+The popup remains alive in the background while hidden. This avoids repeated native-window recreation and improves stability in the packaged Windows build.
 
-1. The floating popup appears.
-2. The user writes a question.
-3. Nova Lens sends the request to Google Gemini.
-4. The answer appears inside the same popup.
-5. The user can ask follow-up questions.
-6. After the configured inactivity period, the popup fades out.
+### Screen analysis
 
-### Screen question detection
+Press `P + Shift + S` to capture the full visible desktop across connected displays. Nova Lens sends the screenshot to Gemini and displays an answer in a temporary response window.
 
-When `P + Shift + S` is pressed:
+The current version captures the complete visible desktop. Region selection is not implemented yet.
 
-1. Nova Lens captures the full visible desktop, including connected displays.
-2. The screenshot is sent directly to Gemini.
-3. Gemini detects the main visible question, problem, or exercise.
-4. Nova Lens displays the answer in a temporary popup.
+### Recent audio
 
-The screenshot is captured before the response popup appears, so the Nova Lens window is not included in the image.
+While Nova Lens is running, it keeps only the newest 10 seconds of microphone input in a circular memory buffer. Older audio is continuously overwritten.
 
-### Recent spoken questions
+Press `P + Shift + A` to send a snapshot of that recent audio to Gemini for transcription and an answer.
 
-While Nova Lens is running, it continuously keeps only the latest 10 seconds of microphone audio in a circular memory buffer.
+Nova Lens does not capture desktop or system audio. It uses the Windows default microphone input.
 
-When `P + Shift + A` is pressed:
+## Privacy and Security
 
-1. Nova Lens takes a snapshot of the previous 10 seconds from the in-memory buffer.
-2. The audio is prepared as a temporary WAV file.
-3. Gemini transcribes the spoken question.
-4. Gemini answers the transcribed question.
-5. Nova Lens displays both the transcription and the answer.
-6. The temporary WAV file is deleted immediately after it is read or when the process closes.
+- Your Gemini API key is stored locally in `%APPDATA%\NovaLens\.env`.
+- The API key is not bundled in the executable or release ZIP.
+- The rolling microphone buffer is kept in RAM.
+- Older microphone audio is continuously overwritten.
+- Audio is sent to Gemini only after `P + Shift + A` is pressed.
+- A temporary WAV file is created only for processing and is deleted afterward.
+- A screenshot is sent to Gemini only after `P + Shift + S` is pressed.
+- Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
+- Never include API keys in screenshots, logs, issues, or public repositories.
 
-Older audio is continuously overwritten and is never sent to Gemini unless the audio hotkey is pressed.
+Do not run Nova Lens around private conversations unless everyone present understands that the rolling microphone buffer is active.
 
----
+## Known Limitations
 
-## Settings Interface
-
-Open the graphical settings window with:
-
-```text
-P + Shift + Enter
-```
-
-The settings interface currently allows you to change:
-
-- Primary popup color.
-- Text color.
-- Secondary text color.
-- Border color.
-- Transparency.
-- Font size.
-- Border radius.
-- Screen margin.
-- Popup position.
-- Auto-hide time.
-- Click-through behavior.
-- Text-popup and close hotkeys.
-- Startup with Windows.
-
-Settings are stored locally in `config.json`.
-
----
+- Windows x64 is the only packaged platform in v1.0.1.
+- The application is not code-signed and has no installer yet.
+- Screen analysis captures the entire visible desktop instead of a selected region.
+- Screen and audio hotkeys are not configurable yet.
+- The rolling-audio duration is fixed at 10 seconds.
+- The selected default Windows microphone must work correctly.
+- There is no tray indicator showing that the microphone buffer is active.
+- The **Informar error** button does not submit reports yet.
+- Video analysis is not implemented.
+- AI answers and transcriptions may be incorrect.
+- Gemini access depends on the user's Google project, API key status, quota, and service availability.
 
 ## Project Structure
 
 ```text
 NovaLens/
+├── .github/
+│   └── workflows/
+├── assets/
 ├── backend.py
+├── build_exe.ps1
 ├── config.py
 ├── config_manager.py
+├── launcher.py
 ├── main.py
 ├── multimodal.py
 ├── popup.py
+├── popup_exe.py
 ├── rolling_audio.py
+├── requirements-build.txt
 ├── requirements.txt
 ├── README.md
-├── .env
-├── .gitignore
-├── config.json
-└── .venv/
+└── .gitignore
 ```
 
 ### Main Files
 
-- `main.py`: keeps Nova Lens running, manages hotkeys, maintains the rolling audio buffer, and launches child processes.
-- `popup.py`: contains the persistent text popup, animations, timer, and click-through behavior.
-- `multimodal.py`: captures the screen, reads recent buffered audio, and displays multimodal responses.
-- `rolling_audio.py`: keeps only the latest microphone audio in a circular in-memory buffer.
-- `backend.py`: manages text, screenshot, and audio requests sent to Google Gemini.
-- `config.py`: contains the graphical settings interface.
-- `config_manager.py`: loads, validates, saves, and restores Nova Lens settings.
-- `requirements.txt`: contains the project dependencies.
-- `.env`: stores the Google Gemini API key locally.
-- `config.json`: stores local user preferences.
-- `.gitignore`: prevents private, temporary, and local files from being uploaded.
+- `launcher.py`: packaged application entry point and AppData path configuration.
+- `main.py`: background process, global hotkeys, child processes, and rolling-audio control.
+- `popup.py`: source-mode text popup.
+- `popup_exe.py`: packaged popup implementation with stable hiding and animations.
+- `multimodal.py`: screenshot and recent-audio response windows.
+- `rolling_audio.py`: circular in-memory microphone buffer.
+- `backend.py`: Google Gemini text, image, and audio requests.
+- `config.py`: graphical Settings interface.
+- `config_manager.py`: local configuration, API-key storage, and Windows startup management.
+- `build_exe.ps1`: clean Windows build, ZIP packaging, and SHA-256 checksum generation.
 
-> The `.env` file contains private information and must never be uploaded to GitHub.
+## Run from Source
 
----
+### Requirements
 
-## Installation for Developers
+- Windows
+- Python 3.14 recommended for the current build workflow
+- A personal Google Gemini API key
 
-Nova Lens Beta is currently distributed as source code and does not yet include an official installer or `.exe` file.
-
-### 1. Clone the repository
+### Clone the repository
 
 ```powershell
 git clone https://github.com/uryastra-beep/NovaLens.git
 cd NovaLens
 ```
 
-### 2. Create a virtual environment
+### Create and activate a virtual environment
 
 ```powershell
 python -m venv .venv
-```
-
-### 3. Activate the virtual environment
-
-```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 4. Install or update the dependencies
+### Install dependencies
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install --upgrade -r requirements.txt
 ```
 
----
+### Configure Gemini for source mode
 
-## Configure Google Gemini
-
-Every person running Nova Lens from source code must use their own Google Gemini API key.
-
-Create a file named `.env` in the project folder:
+Create a `.env` file in the project directory:
 
 ```env
 GEMINI_API_KEY=YOUR_OWN_API_KEY
 ```
 
-Do not add quotation marks around the API key.
+Never commit or publish this file.
 
-The `.env` file is excluded from the repository through `.gitignore` and must never be published.
-
----
-
-## Run Nova Lens from Source
-
-### Development mode
+### Run in development mode
 
 ```powershell
 python main.py
 ```
 
-### Background mode
+### Run without a console
 
 ```powershell
 .\.venv\Scripts\pythonw.exe main.py
 ```
 
----
+## Build the Windows Release
 
-## Dependencies
+From an activated virtual environment, run:
 
-```text
-google-genai
-python-dotenv
-flet
-keyboard
-Pillow
-numpy
-sounddevice
+```powershell
+.\build_exe.ps1
 ```
 
----
+The script stops old Nova Lens processes, removes previous build folders, installs current dependencies, builds the packaged application, removes local secret files, and creates:
 
-## Privacy
+```text
+dist\NovaLens\NovaLens.exe
+NovaLens-v1.0.1-Windows-x64.zip
+NovaLens-v1.0.1-Windows-x64.zip.sha256
+```
 
-Nova Lens uses the microphone while the app is running so it can recover a question that was spoken immediately before the audio hotkey was pressed.
-
-- Only the latest 10 seconds are kept in a circular RAM buffer.
-- Older microphone audio is continuously overwritten.
-- The rolling buffer is not intentionally written to disk.
-- Audio is not sent to Gemini until `P + Shift + A` is pressed.
-- After the hotkey is pressed, Nova Lens creates a temporary WAV file for the child process and deletes it immediately after reading it or when the process closes.
-- `P + Shift + S` captures the full visible desktop and sends the screenshot to Google Gemini.
-- Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
-- API keys must never be included directly in the source code or shared in bug reports.
-
-Do not run Nova Lens around private conversations unless everyone present understands that the microphone buffer is active.
-
----
-
-## Beta Limitations
-
-- Nova Lens currently only supports Windows.
-- Screen detection captures the complete desktop instead of a selected region.
-- The screen and audio hotkeys are not configurable yet.
-- The rolling audio duration is currently fixed at 10 seconds.
-- The selected default microphone must work correctly in Windows.
-- Nova Lens currently has no tray indicator showing that the microphone buffer is active.
-- Video analysis has not been implemented yet.
-- The error-reporting button does not submit reports yet.
-- There is no official installer or executable yet.
-- AI-generated answers and transcriptions may contain errors.
-
----
+The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.exe` and `_internal`.
 
 ## Development Roadmap
 
 - [x] Google Gemini integration.
 - [x] Floating text popup.
-- [x] Follow-up questions.
-- [x] Basic context between questions.
+- [x] Follow-up questions and short context.
+- [x] Stable packaged popup lifecycle.
 - [x] Entry and fade-out animations.
-- [x] Automatic hiding.
-- [x] Stable click-through behavior.
 - [x] Global hotkeys.
 - [x] Background execution.
-- [x] Prevention of multiple instances.
-- [x] Graphical settings interface.
-- [x] Customizable text-popup hotkeys.
-- [x] Color, transparency, font, and position settings.
+- [x] Single-instance protection.
+- [x] Graphical Settings interface.
+- [x] Custom appearance and text-popup hotkeys.
 - [x] Optional startup with Windows.
-- [x] Full-screen question detection.
-- [x] Screenshot analysis and automatic answers.
+- [x] Full-desktop screenshot analysis.
 - [x] Rolling 10-second microphone buffer.
 - [x] Audio transcription and automatic answers.
+- [x] Windows x64 executable package.
 - [ ] Microphone activity indicator.
-- [ ] Option to enable or disable the rolling audio buffer.
+- [ ] Enable or disable rolling audio from Settings.
 - [ ] Configurable rolling-audio duration.
 - [ ] Configurable screen and audio hotkeys.
 - [ ] Screen region selection.
 - [ ] Compact and normal display modes.
 - [ ] Short video analysis.
-- [ ] Error-reporting system and Discord integration.
-- [ ] Windows `.exe` build.
-- [ ] Windows installer.
+- [ ] Error-reporting and Discord integration.
+- [ ] Windows installer and code signing.
 - [ ] Native Linux version.
 
----
+## Support and Community
 
-## Current Release
-
-The latest public beta release is:
-
-```text
-v0.2.0-beta
-```
-
-The multimodal screen and rolling-audio features are currently available on the development branch and should be tested before the next public beta release.
-
----
-
-## Contributions and Support
-
-Suggestions, bug reports, and contributions are welcome.
-
-For bug reports, technical support, community discussions, and project updates, join the official Nova Lens Discord server:
+For bug reports, technical support, project updates, and community discussion, join the official Discord server:
 
 https://discord.gg/Dfns48WEqH
 
----
+GitHub issues are also available for reproducible bugs and feature requests. Do not include API keys or private information in reports.
 
 ## Disclaimer
 
-Nova Lens may generate incorrect, incomplete, or outdated responses.
-
-Important information should always be verified before use.
+Nova Lens may generate incorrect, incomplete, or outdated responses. Important information should always be verified.
 
 Nova Lens is not intended to replace medical, legal, financial, or other professional advice.
 
----
-
 ## License
 
-A project license has not been selected yet.
+A project license has not been selected yet. Until a license is added, copyright law applies by default and reuse rights are not granted automatically.
 
 ---
 
 Made with Python, Flet, and Google Gemini.
-
-**Join our Discord for more information:** https://discord.gg/Dfns48WEqH
