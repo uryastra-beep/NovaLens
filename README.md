@@ -1,26 +1,25 @@
-# NovaLens
+# Nova Lens
 
-**NovaLens — Powered by Google Gemini**
+**Nova Lens — Powered by Google Gemini**
 
-NovaLens is a Windows desktop assistant that lets you ask an AI questions from any application through a floating popup.
+Nova Lens is a Windows desktop assistant that lets you ask an AI questions from any application through a floating popup.
 
-The app runs in the background, can be opened with a global hotkey, and supports click-through mode so you can keep using the window behind it.
+The app runs in the background, can be opened with global hotkeys, can detect questions visible on the screen, and can transcribe and answer spoken questions.
 
-> NovaLens is currently in **Beta**.
+> Nova Lens is currently in **Beta**.
 
 ---
 
 ## Project Status
 
-- **Current version:** `v0.2.0-beta`
+- **Latest public release:** `v0.2.0-beta`
+- **Development branch:** includes experimental screen and audio support
 - **Supported platform:** Windows
 - **Language:** Python
 - **Interface:** Flet
 - **AI provider:** Google Gemini
 
-NovaLens currently includes a functional Gemini-powered popup and a graphical settings interface.
-
-This release is distributed as source code and is intended mainly for developers, collaborators, and early testers.
+Nova Lens is currently distributed as source code and is intended mainly for developers, collaborators, and early testers.
 
 ---
 
@@ -32,24 +31,26 @@ This release is distributed as source code and is intended mainly for developers
 - Questions written directly inside the popup.
 - Follow-up questions.
 - Basic context between consecutive questions.
+- Full-screen question detection.
+- Automatic screenshot analysis with Gemini.
+- Microphone recording for spoken questions.
+- Audio transcription followed by an automatic answer.
 - Global hotkeys.
-- Entry animation from the top of the screen.
-- Fade-out exit animation.
+- Entry and fade-out animations.
 - Automatic hiding after inactivity.
 - Timer reset when typing, clicking, or scrolling.
-- Automatic click-through when the popup loses focus.
+- Automatic click-through when the text popup loses focus.
 - Button to copy responses.
-- Button to hide the popup.
 - Dynamic height based on response length.
 - Internal scrolling for long responses.
-- Prevention of multiple NovaLens instances.
+- Prevention of multiple Nova Lens instances.
 - Background execution without a console through `pythonw.exe`.
 - Graphical settings interface.
 - Persistent settings through `config.json`.
 - Customizable colors and transparency.
 - Configurable font size, border radius, margin, and popup position.
 - Configurable auto-hide timer.
-- Customizable global hotkeys.
+- Customizable text-popup hotkeys.
 - Optional startup with Windows.
 
 ---
@@ -58,37 +59,58 @@ This release is distributed as source code and is intended mainly for developers
 
 | Action | Hotkey |
 |---|---|
-| Open or reactivate NovaLens | `P + Enter` |
-| Open NovaLens settings | `P + Shift + Enter` |
-| Completely close NovaLens | `P + Backspace` |
-| Completely close NovaLens | `P + Delete` |
+| Open or reactivate the text popup | `P + Enter` |
+| Open Nova Lens settings | `P + Shift + Enter` |
+| Analyze the visible screen | `P + Shift + S` |
+| Record, transcribe, and answer audio | `P + Shift + A` |
+| Completely close Nova Lens | `P + Backspace` |
+| Completely close Nova Lens | `P + Delete` |
 
-These hotkeys can be changed from the settings interface.
+The text-popup, settings, and close hotkeys can be changed from the settings interface.
+
+The screen and audio hotkeys are currently fixed while the multimodal system is still experimental.
 
 ---
 
 ## How It Works
 
-When NovaLens starts, it remains in the background waiting for a hotkey.
+### Text questions
 
 When `P + Enter` is pressed:
 
-1. The popup appears from the top of the screen.
+1. The floating popup appears.
 2. The user writes a question.
-3. NovaLens sends the request to Google Gemini.
+3. Nova Lens sends the request to Google Gemini.
 4. The answer appears inside the same popup.
 5. The user can ask follow-up questions.
-6. After the configured inactivity period, the popup fades out and disappears.
+6. After the configured inactivity period, the popup fades out.
 
-When the popup loses focus, it automatically enables click-through mode. This lets the user continue clicking and working normally in the application behind NovaLens.
+### Screen question detection
 
-Press `P + Enter` again to reactivate the popup and interact with it.
+When `P + Shift + S` is pressed:
+
+1. Nova Lens captures the full visible desktop, including connected displays.
+2. The screenshot is sent directly to Gemini.
+3. Gemini detects the main visible question, problem, or exercise.
+4. Nova Lens displays the answer in a temporary popup.
+
+The screenshot is captured before the response popup appears, so the Nova Lens window is not included in the image.
+
+### Spoken questions
+
+When `P + Shift + A` is pressed:
+
+1. Nova Lens records the default microphone for 10 seconds.
+2. The recording is sent directly to Gemini as a WAV audio file.
+3. Gemini transcribes the spoken question.
+4. Gemini answers the transcribed question.
+5. Nova Lens displays both the transcription and the answer.
 
 ---
 
 ## Settings Interface
 
-NovaLens includes a graphical settings window that can be opened with:
+Open the graphical settings window with:
 
 ```text
 P + Shift + Enter
@@ -107,28 +129,10 @@ The settings interface currently allows you to change:
 - Popup position.
 - Auto-hide time.
 - Click-through behavior.
-- Global hotkeys.
+- Text-popup and close hotkeys.
 - Startup with Windows.
 
 Settings are stored locally in `config.json`.
-
----
-
-## Default Appearance
-
-The default design includes:
-
-- Semi-transparent brown background.
-- Primary color: `#522E18`.
-- Approximately `60%` transparency.
-- Cream-colored text.
-- Rounded corners.
-- Position at the top of the screen.
-- Margin from the monitor edges.
-- Dynamic height.
-- Maximum height of approximately 10 cm.
-- Curtain-style entry animation.
-- Fade-out exit animation.
 
 ---
 
@@ -140,6 +144,7 @@ NovaLens/
 ├── config.py
 ├── config_manager.py
 ├── main.py
+├── multimodal.py
 ├── popup.py
 ├── requirements.txt
 ├── README.md
@@ -151,11 +156,12 @@ NovaLens/
 
 ### Main Files
 
-- `main.py`: keeps NovaLens running in the background and manages global hotkeys.
-- `popup.py`: contains the floating interface, animations, timer, and click-through behavior.
-- `backend.py`: manages the Google Gemini connection.
+- `main.py`: keeps Nova Lens running and manages global hotkeys and child processes.
+- `popup.py`: contains the persistent text popup, animations, timer, and click-through behavior.
+- `multimodal.py`: captures the screen, records audio, and displays multimodal responses.
+- `backend.py`: manages text, screenshot, and audio requests sent to Google Gemini.
 - `config.py`: contains the graphical settings interface.
-- `config_manager.py`: loads, validates, saves, and restores NovaLens settings.
+- `config_manager.py`: loads, validates, saves, and restores Nova Lens settings.
 - `requirements.txt`: contains the project dependencies.
 - `.env`: stores the Google Gemini API key locally.
 - `config.json`: stores local user preferences.
@@ -167,9 +173,7 @@ NovaLens/
 
 ## Installation for Developers
 
-NovaLens Beta is currently distributed as source code and does not yet include an official installer or `.exe` file.
-
-These instructions are intended for developers or anyone who wants to test, study, or contribute to the project.
+Nova Lens Beta is currently distributed as source code and does not yet include an official installer or `.exe` file.
 
 ### 1. Clone the repository
 
@@ -186,14 +190,12 @@ python -m venv .venv
 
 ### 3. Activate the virtual environment
 
-In PowerShell:
-
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 4. Install the dependencies
+### 4. Install or update the dependencies
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -203,11 +205,9 @@ python -m pip install -r requirements.txt
 
 ## Configure Google Gemini
 
-For security reasons, NovaLens does not include the developer's API key.
+Every person running Nova Lens from source code must use their own Google Gemini API key.
 
-Anyone running NovaLens from source code must use their own Google Gemini API key.
-
-Create a file named `.env` in the main project folder:
+Create a file named `.env` in the project folder:
 
 ```env
 GEMINI_API_KEY=YOUR_OWN_API_KEY
@@ -219,7 +219,7 @@ The `.env` file is excluded from the repository through `.gitignore` and must ne
 
 ---
 
-## Run NovaLens from Source
+## Run Nova Lens from Source
 
 ### Development mode
 
@@ -227,38 +227,10 @@ The `.env` file is excluded from the repository through `.gitignore` and must ne
 python main.py
 ```
 
-The terminal will remain open while NovaLens is running.
-
 ### Background mode
 
 ```powershell
 .\.venv\Scripts\pythonw.exe main.py
-```
-
-NovaLens will run without displaying a terminal window.
-
-To open or reactivate the popup:
-
-```text
-P + Enter
-```
-
-To open the settings interface:
-
-```text
-P + Shift + Enter
-```
-
-To completely close NovaLens:
-
-```text
-P + Backspace
-```
-
-or:
-
-```text
-P + Delete
 ```
 
 ---
@@ -270,69 +242,67 @@ google-genai
 python-dotenv
 flet
 keyboard
+Pillow
+numpy
+sounddevice
 ```
 
 ---
 
 ## Privacy
 
-NovaLens only processes information voluntarily submitted by the user.
+Nova Lens only captures the screen or microphone after the user presses the corresponding hotkey.
 
-The project must not:
+- `P + Shift + S` captures the full visible desktop and sends the screenshot to Google Gemini.
+- `P + Shift + A` records the default microphone for 10 seconds and sends the WAV audio to Google Gemini.
+- Screenshots and audio recordings are processed in memory and are not intentionally saved as permanent local files by Nova Lens.
+- Nova Lens does not continuously monitor the screen or microphone.
+- API keys must never be included directly in the source code or shared in bug reports.
 
-- Capture the screen without permission.
-- Listen to the microphone without permission.
-- Record video secretly.
-- Save recordings without permission.
-- Include API keys directly in the source code.
-- Upload private information automatically.
-- Run hidden capture features without clear user action.
-
-Future screen, audio, and video features must be activated through explicit actions or hotkeys.
+Do not activate screen or audio capture while sensitive information is visible or audible.
 
 ---
 
 ## Beta Limitations
 
-- NovaLens currently only supports Windows.
-- Screenshot capture has not been implemented yet.
-- Image analysis has not been implemented yet.
-- Audio recording and transcription have not been implemented yet.
+- Nova Lens currently only supports Windows.
+- Screen detection captures the complete desktop instead of a selected region.
+- The screen and audio hotkeys are not configurable yet.
+- Audio recording currently lasts a fixed 10 seconds.
+- The selected default microphone must work correctly in Windows.
 - Video analysis has not been implemented yet.
 - The error-reporting button does not submit reports yet.
 - There is no official installer or executable yet.
-- Each developer must provide their own Google Gemini API key.
-- AI-generated responses may contain errors.
+- AI-generated answers and transcriptions may contain errors.
 
 ---
 
 ## Development Roadmap
 
 - [x] Google Gemini integration.
-- [x] Floating popup.
-- [x] Questions from the popup.
+- [x] Floating text popup.
 - [x] Follow-up questions.
 - [x] Basic context between questions.
-- [x] Entry animation.
-- [x] Fade-out animation.
+- [x] Entry and fade-out animations.
 - [x] Automatic hiding.
 - [x] Stable click-through behavior.
 - [x] Global hotkeys.
 - [x] Background execution.
 - [x] Prevention of multiple instances.
 - [x] Graphical settings interface.
-- [x] Customizable hotkeys.
-- [x] Color and transparency settings.
-- [x] Configurable font size.
-- [x] Configurable popup position.
-- [x] Configurable auto-hide timer.
+- [x] Customizable text-popup hotkeys.
+- [x] Color, transparency, font, and position settings.
 - [x] Optional startup with Windows.
+- [x] Full-screen question detection.
+- [x] Screenshot analysis and automatic answers.
+- [x] Audio recording and transcription.
+- [x] Automatic answers to spoken questions.
+- [ ] Configurable screen and audio hotkeys.
+- [ ] Variable or push-to-talk audio duration.
+- [ ] Screen region selection.
 - [ ] Compact and normal display modes.
-- [ ] Screen region capture.
-- [ ] Image analysis.
-- [ ] Audio recording and transcription.
 - [ ] Short video analysis.
-- [ ] Error-reporting system.
+- [ ] Error-reporting system and Discord integration.
 - [ ] Windows `.exe` build.
 - [ ] Windows installer.
 - [ ] Native Linux version.
@@ -347,15 +317,13 @@ The latest public beta release is:
 v0.2.0-beta
 ```
 
-This version adds the graphical settings interface, persistent configuration, customizable appearance and hotkeys, optional Windows startup, and major click-through and focus stability improvements.
+The multimodal screen and audio features are currently available on the development branch and should be tested before the next public beta release.
 
 ---
 
 ## Contributions and Support
 
-NovaLens is still in an early stage of development.
-
-Suggestions, bug reports, and contributions are welcome as the project continues to grow.
+Suggestions, bug reports, and contributions are welcome.
 
 For bug reports, technical support, community discussions, and project updates, join the official Nova Lens Discord server:
 
@@ -365,11 +333,11 @@ https://discord.gg/Dfns48WEqH
 
 ## Disclaimer
 
-NovaLens may generate incorrect, incomplete, or outdated responses.
+Nova Lens may generate incorrect, incomplete, or outdated responses.
 
 Important information should always be verified before use.
 
-NovaLens is not intended to replace medical, legal, financial, or other professional advice.
+Nova Lens is not intended to replace medical, legal, financial, or other professional advice.
 
 ---
 
