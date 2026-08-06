@@ -118,6 +118,18 @@ def run_child_module() -> bool:
     if module_name is None:
         return False
 
+    # The packaged popup keeps its native window alive at zero opacity to
+    # avoid the old collapsed-window bug. Start the Win32 watcher inside the
+    # popup child process so that the invisible window becomes click-through.
+    if requested_file == "popup.py":
+        try:
+            from native_clickthrough import start_native_clickthrough_watch
+
+            start_native_clickthrough_watch()
+        except Exception:
+            # Flet's own ignore_mouse_events remains as a fallback.
+            pass
+
     original_arguments = sys.argv[1:]
     sys.argv = original_arguments
     runpy.run_module(
