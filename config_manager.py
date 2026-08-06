@@ -11,6 +11,8 @@ from typing import Any
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_CONFIG = CARPETA_PROYECTO / "config.json"
 ARCHIVO_CONFIG_TEMPORAL = CARPETA_PROYECTO / "config.tmp.json"
+ARCHIVO_ENV = CARPETA_PROYECTO / ".env"
+ARCHIVO_ENV_TEMPORAL = CARPETA_PROYECTO / ".env.tmp"
 
 NOMBRE_INICIO_WINDOWS = "NovaLens"
 
@@ -185,6 +187,7 @@ def cargar_configuracion() -> dict[str, Any]:
 
 def guardar_configuracion(datos: dict[str, Any]) -> dict[str, Any]:
     configuracion = validar_configuracion(datos)
+    ARCHIVO_CONFIG.parent.mkdir(parents=True, exist_ok=True)
 
     ARCHIVO_CONFIG_TEMPORAL.write_text(
         json.dumps(configuracion, ensure_ascii=False, indent=2),
@@ -197,6 +200,46 @@ def guardar_configuracion(datos: dict[str, Any]) -> dict[str, Any]:
 
 def restaurar_configuracion() -> dict[str, Any]:
     return guardar_configuracion(CONFIGURACION_PREDETERMINADA)
+
+
+def cargar_api_key() -> str:
+    try:
+        lineas = ARCHIVO_ENV.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return os.getenv("GEMINI_API_KEY", "").strip()
+
+    for linea in lineas:
+        contenido = linea.strip()
+        if not contenido or contenido.startswith("#"):
+            continue
+
+        nombre, separador, valor = contenido.partition("=")
+        if separador and nombre.strip() == "GEMINI_API_KEY":
+            clave = valor.strip()
+            if len(clave) >= 2 and clave[0] == clave[-1] and clave[0] in {'"', "'"}:
+                clave = clave[1:-1]
+            return clave.strip()
+
+    return ""
+
+
+def guardar_api_key(valor: str) -> str:
+    clave = (valor or "").strip()
+
+    if not clave:
+        raise ValueError("La API key de Google Gemini no puede estar vacía.")
+
+    if "\n" in clave or "\r" in clave:
+        raise ValueError("La API key contiene caracteres no válidos.")
+
+    ARCHIVO_ENV.parent.mkdir(parents=True, exist_ok=True)
+    ARCHIVO_ENV_TEMPORAL.write_text(
+        f"GEMINI_API_KEY={clave}\n",
+        encoding="utf-8",
+    )
+    os.replace(ARCHIVO_ENV_TEMPORAL, ARCHIVO_ENV)
+    os.environ["GEMINI_API_KEY"] = clave
+    return clave
 
 
 def color_con_opacidad(color_hex: str, opacidad_porcentaje: int | float) -> str:
