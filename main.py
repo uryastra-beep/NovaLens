@@ -16,6 +16,7 @@ import keyboard
 from config_manager import (
     ARCHIVO_CONFIG,
     CONFIGURACION_PREDETERMINADA,
+    cargar_api_key,
     cargar_configuracion,
 )
 from rolling_audio import RollingAudioBuffer
@@ -187,6 +188,10 @@ def activar_popup() -> None:
     global ultimo_atajo_abrir
 
     if novalens_cerrando.is_set():
+        return
+
+    if not cargar_api_key():
+        abrir_configuracion()
         return
 
     ahora = time.monotonic()
@@ -374,11 +379,19 @@ def abrir_multimodal(
 
 
 def analizar_pantalla() -> None:
+    if not cargar_api_key():
+        abrir_configuracion()
+        return
+
     abrir_multimodal("screen")
 
 
 def responder_audio_anterior() -> None:
     if novalens_cerrando.is_set():
+        return
+
+    if not cargar_api_key():
+        abrir_configuracion()
         return
 
     with bloqueo_estado:
@@ -686,6 +699,9 @@ def main() -> None:
         target=vigilar_cambios_configuracion,
         daemon=True,
     ).start()
+
+    if not cargar_api_key():
+        threading.Timer(0.35, abrir_configuracion).start()
 
     try:
         keyboard.wait()
