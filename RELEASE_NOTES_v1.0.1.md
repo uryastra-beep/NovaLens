@@ -2,7 +2,7 @@
 
 **Release date:** August 6, 2026
 
-Nova Lens v1.0.1 is the first official release that includes a packaged Windows executable.
+Nova Lens v1.0.1 is the first official release that includes a packaged Windows executable. It is distributed as a portable ZIP package and does not require an installer.
 
 ## Highlights
 
