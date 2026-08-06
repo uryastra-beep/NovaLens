@@ -21,12 +21,13 @@ from config_manager import (
 
 
 # ══════════════════════════════════════════════
-# RUTAS
+# PATHS
 # ══════════════════════════════════════════════
 
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_POPUP = CARPETA_PROYECTO / "popup.py"
 ARCHIVO_CONFIG_APP = CARPETA_PROYECTO / "config.py"
+ARCHIVO_MULTIMODAL = CARPETA_PROYECTO / "multimodal.py"
 
 ARCHIVO_CONTROL = (
     Path(tempfile.gettempdir())
@@ -34,13 +35,17 @@ ARCHIVO_CONTROL = (
 )
 ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 
+ATAJO_PANTALLA = "p+shift+s"
+ATAJO_AUDIO = "p+shift+a"
+
 
 # ══════════════════════════════════════════════
-# ESTADO
+# STATE
 # ══════════════════════════════════════════════
 
 proceso_popup: subprocess.Popen | None = None
 proceso_configuracion: subprocess.Popen | None = None
+procesos_multimodales: dict[str, subprocess.Popen] = {}
 
 bloqueo_estado = threading.Lock()
 bloqueo_control = threading.Lock()
@@ -55,7 +60,7 @@ identificadores_atajos: list[object] = []
 
 
 # ══════════════════════════════════════════════
-# EVITAR DOS INSTANCIAS
+# SINGLE INSTANCE
 # ══════════════════════════════════════════════
 
 def asegurar_instancia_unica() -> None:
@@ -77,7 +82,7 @@ def asegurar_instancia_unica() -> None:
 
 
 # ══════════════════════════════════════════════
-# COMUNICACIÓN CON popup.py
+# COMMUNICATION WITH popup.py
 # ══════════════════════════════════════════════
 
 def enviar_comando(comando: str) -> None:
@@ -112,14 +117,11 @@ def eliminar_archivos_control() -> None:
 
 
 # ══════════════════════════════════════════════
-# PROCESO DEL POPUP
+# TEXT POPUP PROCESS
 # ══════════════════════════════════════════════
 
 def popup_esta_ejecutandose() -> bool:
-    return (
-        proceso_popup is not None
-        and proceso_popup.poll() is None
-    )
+    return proceso_popup is not None and proceso_popup.poll() is None
 
 
 def vigilar_popup(proceso: subprocess.Popen) -> None:
@@ -140,11 +142,7 @@ def iniciar_popup() -> None:
 
     enviar_comando("activate")
 
-    creation_flags = getattr(
-        subprocess,
-        "CREATE_NO_WINDOW",
-        0,
-    )
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     try:
         proceso = subprocess.Popen(
@@ -219,7 +217,83 @@ def detener_popup_residente() -> None:
 
 
 # ══════════════════════════════════════════════
-# VENTANA DE CONFIGURACIÓN
+# SCREEN AND AUDIO PROCESSES
+# ══════════════════════════════════════════════
+
+def vigilar_multimodal(modo: str, proceso: subprocess.Popen) -> None:
+    proceso.wait()
+
+    with bloqueo_estado:
+        if procesos_multimodales.get(modo) is proceso:
+            procesos_multimodales.pop(modo, None)
+
+
+def abrir_multimodal(modo: str) -> None:
+    if (
+        novalens_cerrando.is_set()
+        or modo not in {"screen", "audio"}
+        or not ARCHIVO_MULTIMODAL.exists()
+    ):
+        return
+
+    with bloqueo_estado:
+        proceso_actual = procesos_multimodales.get(modo)
+
+        if proceso_actual is not None and proceso_actual.poll() is None:
+            return
+
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        try:
+            proceso = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ARCHIVO_MULTIMODAL),
+                    modo,
+                ],
+                cwd=str(CARPETA_PROYECTO),
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return
+
+        procesos_multimodales[modo] = proceso
+
+    threading.Thread(
+        target=vigilar_multimodal,
+        args=(modo, proceso),
+        daemon=True,
+    ).start()
+
+
+def analizar_pantalla() -> None:
+    abrir_multimodal("screen")
+
+
+def grabar_pregunta_audio() -> None:
+    abrir_multimodal("audio")
+
+
+def detener_procesos_multimodales() -> None:
+    with bloqueo_estado:
+        procesos = list(procesos_multimodales.values())
+        procesos_multimodales.clear()
+
+    for proceso in procesos:
+        if proceso.poll() is not None:
+            continue
+
+        try:
+            proceso.terminate()
+            proceso.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proceso.kill()
+        except Exception:
+            pass
+
+
+# ══════════════════════════════════════════════
+# SETTINGS WINDOW
 # ══════════════════════════════════════════════
 
 def vigilar_config_app(proceso: subprocess.Popen) -> None:
@@ -245,11 +319,7 @@ def abrir_configuracion() -> None:
         ):
             return
 
-        creation_flags = getattr(
-            subprocess,
-            "CREATE_NO_WINDOW",
-            0,
-        )
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
         try:
             proceso = subprocess.Popen(
@@ -273,7 +343,7 @@ def abrir_configuracion() -> None:
 
 
 # ══════════════════════════════════════════════
-# ATAJOS DINÁMICOS
+# DYNAMIC HOTKEYS
 # ══════════════════════════════════════════════
 
 def quitar_atajos_registrados() -> None:
@@ -352,6 +422,20 @@ def registrar_atajos() -> None:
             usados,
         )
 
+        # Multimodal Beta hotkeys. They will become configurable later.
+        agregar_atajo_seguro(
+            ATAJO_PANTALLA,
+            ATAJO_PANTALLA,
+            analizar_pantalla,
+            usados,
+        )
+        agregar_atajo_seguro(
+            ATAJO_AUDIO,
+            ATAJO_AUDIO,
+            grabar_pregunta_audio,
+            usados,
+        )
+
 
 def obtener_marca_config() -> int:
     try:
@@ -370,17 +454,15 @@ def vigilar_cambios_configuracion() -> None:
             continue
 
         ultima_marca = marca_actual
-
         registrar_atajos()
 
-        # popup.py lee la configuración al iniciar.
-        # Al guardar ajustes cerramos el popup residente;
-        # la próxima vez que se abra usará los valores nuevos.
+        # popup.py reads the configuration when it starts.
+        # Closing it here makes the next launch use the new settings.
         detener_popup_residente()
 
 
 # ══════════════════════════════════════════════
-# CERRAR NOVALENS COMPLETAMENTE
+# COMPLETELY CLOSE NOVA LENS
 # ══════════════════════════════════════════════
 
 def cerrar_novalens() -> None:
@@ -392,6 +474,7 @@ def cerrar_novalens() -> None:
     novalens_cerrando.set()
 
     detener_popup_residente()
+    detener_procesos_multimodales()
 
     with bloqueo_estado:
         proceso_config = proceso_configuracion
@@ -415,14 +498,14 @@ def cerrar_novalens() -> None:
 
 
 # ══════════════════════════════════════════════
-# NOVALENS RESIDENTE
+# RESIDENT PROCESS
 # ══════════════════════════════════════════════
 
 def main() -> None:
     asegurar_instancia_unica()
     eliminar_archivos_control()
 
-    # Crea config.json automáticamente la primera vez.
+    # Create config.json automatically on the first run.
     cargar_configuracion()
 
     registrar_atajos()
