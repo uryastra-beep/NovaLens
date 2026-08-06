@@ -134,11 +134,19 @@ def calcular_altura(texto: str, ancho: int) -> int:
     return max(ALTURA_MINIMA, min(altura, ALTURA_MAXIMA))
 
 
-def capturar_pantalla_png() -> bytes:
+def capturar_pantalla_jpeg() -> bytes:
     imagen = ImageGrab.grab(all_screens=True)
 
+    if imagen.mode != "RGB":
+        imagen = imagen.convert("RGB")
+
     with io.BytesIO() as buffer:
-        imagen.save(buffer, format="PNG", optimize=True)
+        imagen.save(
+            buffer,
+            format="JPEG",
+            quality=82,
+            optimize=True,
+        )
         return buffer.getvalue()
 
 
@@ -378,7 +386,7 @@ async def main(page: ft.Page) -> None:
     try:
         if MODO == "screen":
             # Capture before showing the popup so Nova Lens is not included.
-            captura = await asyncio.to_thread(capturar_pantalla_png)
+            captura = await asyncio.to_thread(capturar_pantalla_jpeg)
             texto_respuesta.value = (
                 "Detectando la pregunta visible en la pantalla…"
             )
