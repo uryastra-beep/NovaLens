@@ -20,6 +20,7 @@ build/
 dist/
 *.spec
 NovaLens-*-Windows-x64.zip
+NovaLens-*-Windows-x64.zip.sha256
 
 # Configuración de editores
 .vscode/
