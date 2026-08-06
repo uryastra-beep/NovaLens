@@ -7,11 +7,13 @@ import flet as ft
 
 from config_manager import (
     CONFIGURACION_PREDETERMINADA,
+    cargar_api_key,
     cargar_configuracion,
     color_con_opacidad,
     color_con_transparencia,
     configurar_inicio_windows,
     es_color_hex,
+    guardar_api_key,
     guardar_configuracion,
     restaurar_configuracion,
 )
@@ -56,6 +58,7 @@ def tarjeta(titulo: str, subtitulo: str, contenido: list[ft.Control]) -> ft.Cont
 
 async def main(page: ft.Page) -> None:
     config = cargar_configuracion()
+    api_key_actual = cargar_api_key()
 
     page.title = "Configuración de NovaLens"
     page.theme_mode = ft.ThemeMode.DARK
@@ -75,7 +78,7 @@ async def main(page: ft.Page) -> None:
     sistema = config["system"]
 
     estado = ft.Text(
-        "Los cambios se guardan en config.json.",
+        "Los cambios se guardan localmente en este dispositivo.",
         size=12,
         color=TEXTO_SECUNDARIO,
     )
@@ -241,6 +244,28 @@ async def main(page: ft.Page) -> None:
         border_color=BORDE,
         focused_border_color=ACENTO,
         color=TEXTO,
+    )
+
+    campo_api_key = ft.TextField(
+        label="Google Gemini API Key",
+        value=api_key_actual,
+        hint_text="Pegá aquí tu propia API key de Gemini",
+        password=True,
+        can_reveal_password=True,
+        expand=True,
+        border_color=BORDE,
+        focused_border_color=ACENTO,
+        color=TEXTO,
+    )
+
+    estado_api_key = ft.Text(
+        (
+            "API key configurada en este dispositivo."
+            if api_key_actual
+            else "Todavía no hay una API key configurada."
+        ),
+        size=12,
+        color=EXITO if api_key_actual else TEXTO_SECUNDARIO,
     )
 
     inicio_windows = ft.Switch(
@@ -429,7 +454,16 @@ async def main(page: ft.Page) -> None:
         if nueva_config is None:
             return
 
+        clave_api = (campo_api_key.value or "").strip()
+        if not clave_api:
+            mostrar_estado(
+                "Pegá tu propia Google Gemini API key antes de guardar.",
+                False,
+            )
+            return
+
         try:
+            guardar_api_key(clave_api)
             guardada = guardar_configuracion(nueva_config)
             configurar_inicio_windows(
                 guardada["system"]["start_with_windows"]
@@ -438,8 +472,10 @@ async def main(page: ft.Page) -> None:
             mostrar_estado(f"No pude guardar la configuración: {error}", False)
             return
 
+        estado_api_key.value = "API key guardada localmente en este dispositivo."
+        estado_api_key.color = EXITO
         mostrar_estado(
-            "Configuración guardada. NovaLens aplicará los cambios automáticamente.",
+            "Configuración y API key guardadas. NovaLens aplicará los cambios automáticamente.",
             True,
         )
 
@@ -481,7 +517,10 @@ async def main(page: ft.Page) -> None:
             mostrar_estado(f"No pude restaurar la configuración: {error}", False)
             return
 
-        mostrar_estado("Valores predeterminados restaurados.", True)
+        mostrar_estado(
+            "Valores predeterminados restaurados. La API key no fue eliminada.",
+            True,
+        )
 
     boton_guardar = ft.Button(
         content="Guardar cambios",
@@ -509,7 +548,7 @@ async def main(page: ft.Page) -> None:
                                 color=TEXTO,
                             ),
                             ft.Text(
-                                "Personalizá el popup sin volver a editar el código.",
+                                "Personalizá el popup y conectá tu propia cuenta de Gemini.",
                                 color=TEXTO_SECUNDARIO,
                             ),
                         ],
@@ -517,7 +556,7 @@ async def main(page: ft.Page) -> None:
                         expand=True,
                     ),
                     ft.Text(
-                        "Beta",
+                        "1.0.1 Dev",
                         color=TEXTO,
                         bgcolor=ACENTO,
                         weight=ft.FontWeight.BOLD,
@@ -525,6 +564,19 @@ async def main(page: ft.Page) -> None:
                 ]
             ),
             estado,
+            tarjeta(
+                "Google Gemini",
+                "Usá tu propia API key para conectar NovaLens con Gemini.",
+                [
+                    campo_api_key,
+                    estado_api_key,
+                    ft.Text(
+                        "La clave se guarda solamente en este dispositivo, dentro del archivo local .env. No se almacena en config.json ni se sube a GitHub.",
+                        size=12,
+                        color=TEXTO_SECUNDARIO,
+                    ),
+                ],
+            ),
             tarjeta(
                 "Vista previa",
                 "Los cambios visuales se muestran aquí antes de guardarlos.",
@@ -624,7 +676,7 @@ async def main(page: ft.Page) -> None:
                     boton_restaurar,
                     ft.Container(expand=True),
                     ft.Text(
-                        "Los ajustes se guardan localmente.",
+                        "La configuración y las credenciales se guardan localmente.",
                         size=12,
                         color=TEXTO_SECUNDARIO,
                     ),
