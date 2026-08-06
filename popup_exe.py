@@ -49,8 +49,13 @@ OCULTAR_AL_PERDER_FOCO = COMPORTAMIENTO["click_through_on_blur"]
 
 ALTURA_MINIMA = 165
 ALTURA_MAXIMA = 378
+DURACION_ENTRADA_MS = 280
+DURACION_SALIDA_MS = 220
 RETRASO_OCULTAR_POR_BLUR = 0.18
 PROTECCION_BLUR_AL_ABRIR = 0.70
+DESPLAZAMIENTO_INICIAL = (
+    0.18 if POSICION_POPUP == "bottom" else -0.18
+)
 
 RESPUESTA_INICIAL = (
     "Nova Lens está listo. "
@@ -162,9 +167,11 @@ async def main(page: ft.Page) -> None:
     popup_visible = False
     procesando = False
     cerrando = False
+    ocultando = False
     ventana_enfocada = False
     proteger_blur_hasta = 0.0
     ultimo_comando_id = -1
+    numero_transicion = 0
 
     temporizador: asyncio.Task | None = None
     tarea_ocultar_blur: asyncio.Task | None = None
@@ -172,6 +179,7 @@ async def main(page: ft.Page) -> None:
     campo_pregunta: ft.TextField
     boton_enviar: ft.TextButton
     boton_listo: ft.TextButton
+    popup: ft.Container
 
     def aplicar_geometria(altura: int | float) -> int:
         altura_segura = limitar_altura(altura)
@@ -212,20 +220,38 @@ async def main(page: ft.Page) -> None:
     async def ocultar_popup() -> None:
         nonlocal popup_visible
         nonlocal ventana_enfocada
+        nonlocal ocultando
+        nonlocal numero_transicion
 
-        if not popup_visible or procesando or cerrando:
+        if not popup_visible or procesando or cerrando or ocultando:
             return
 
         cancelar_temporizador()
         cancelar_ocultado_por_blur()
 
-        popup_visible = False
-        ventana_enfocada = False
+        ocultando = True
+        numero_transicion += 1
+        transicion_actual = numero_transicion
 
-        # Do not toggle Window.visible after startup. Flet 0.86 can restore a
-        # packaged frameless window with a collapsed viewport after repeated
-        # hide/show cycles. Keep the native window alive and hide it using
-        # opacity plus click-through instead.
+        # Animate only the Flet content. The native packaged window remains
+        # alive, which preserves the fix for the collapsed-popup bug.
+        popup.opacity = 0
+        popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
+        popup.update()
+
+        try:
+            await asyncio.sleep(DURACION_SALIDA_MS / 1000)
+        except asyncio.CancelledError:
+            ocultando = False
+            return
+
+        if transicion_actual != numero_transicion or cerrando:
+            ocultando = False
+            return
+
+        popup_visible = False
+        ocultando = False
+        ventana_enfocada = False
         page.window.opacity = 0.0
         page.window.ignore_mouse_events = True
         page.update()
@@ -233,7 +259,7 @@ async def main(page: ft.Page) -> None:
     async def cierre_automatico() -> None:
         try:
             await asyncio.sleep(TIEMPO_VISIBLE)
-            if popup_visible and not procesando:
+            if popup_visible and not procesando and not ocultando:
                 await ocultar_popup()
         except asyncio.CancelledError:
             return
@@ -241,7 +267,7 @@ async def main(page: ft.Page) -> None:
     def reiniciar_temporizador() -> None:
         nonlocal temporizador
 
-        if cerrando or procesando or not popup_visible:
+        if cerrando or procesando or ocultando or not popup_visible:
             return
 
         cancelar_temporizador()
@@ -251,6 +277,8 @@ async def main(page: ft.Page) -> None:
         nonlocal popup_visible
         nonlocal ventana_enfocada
         nonlocal proteger_blur_hasta
+        nonlocal ocultando
+        nonlocal numero_transicion
 
         if cerrando:
             return
@@ -258,11 +286,24 @@ async def main(page: ft.Page) -> None:
         cancelar_temporizador()
         cancelar_ocultado_por_blur()
 
+        numero_transicion += 1
+        activacion_actual = numero_transicion
+        estaba_oculto = not popup_visible
+
+        ocultando = False
         popup_visible = True
         ventana_enfocada = True
         proteger_blur_hasta = time.monotonic() + PROTECCION_BLUR_AL_ABRIR
 
         aplicar_geometria(altura_actual)
+
+        if estaba_oculto:
+            popup.opacity = 0
+            popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
+        else:
+            popup.opacity = 1
+            popup.offset = ft.Offset(0, 0)
+
         page.window.ignore_mouse_events = False
         page.window.opacity = 1.0
         page.window.focused = True
@@ -273,10 +314,16 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.04)
+
+        if activacion_actual != numero_transicion:
+            return
+
         aplicar_geometria(altura_actual)
         page.window.opacity = 1.0
         page.window.ignore_mouse_events = False
+        popup.opacity = 1
+        popup.offset = ft.Offset(0, 0)
         page.update()
 
         reiniciar_temporizador()
@@ -299,6 +346,7 @@ async def main(page: ft.Page) -> None:
                 and not ventana_enfocada
                 and not procesando
                 and not cerrando
+                and not ocultando
             ):
                 await ocultar_popup()
         except asyncio.CancelledError:
@@ -314,7 +362,12 @@ async def main(page: ft.Page) -> None:
             if time.monotonic() < proteger_blur_hasta:
                 return
 
-            if OCULTAR_AL_PERDER_FOCO and popup_visible and not procesando:
+            if (
+                OCULTAR_AL_PERDER_FOCO
+                and popup_visible
+                and not procesando
+                and not ocultando
+            ):
                 cancelar_ocultado_por_blur()
                 tarea_ocultar_blur = asyncio.create_task(
                     ocultar_despues_de_blur()
@@ -419,8 +472,13 @@ async def main(page: ft.Page) -> None:
             boton_enviar.disabled = False
             boton_listo.disabled = False
             indicador.visible = False
-            page.window.opacity = 1.0
-            page.window.ignore_mouse_events = False
+
+            if popup_visible:
+                page.window.opacity = 1.0
+                page.window.ignore_mouse_events = False
+                popup.opacity = 1
+                popup.offset = ft.Offset(0, 0)
+
             page.update()
             reiniciar_temporizador()
 
@@ -655,6 +713,16 @@ async def main(page: ft.Page) -> None:
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         padding=ft.Padding(left=24, right=24, top=12, bottom=8),
         content=contenido,
+        opacity=0,
+        offset=ft.Offset(0, DESPLAZAMIENTO_INICIAL),
+        animate_opacity=ft.Animation(
+            duration=DURACION_SALIDA_MS,
+            curve=ft.AnimationCurve.EASE_OUT,
+        ),
+        animate_offset=ft.Animation(
+            duration=DURACION_ENTRADA_MS,
+            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
+        ),
     )
 
     detector_interacciones = ft.GestureDetector(
@@ -671,8 +739,8 @@ async def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    # The window becomes visible only once. From this point on it is hidden
-    # exclusively with opacity=0 and ignore_mouse_events=True.
+    # Keep the native window alive after startup. Hiding and showing the
+    # packaged frameless window itself caused the collapsed viewport bug.
     page.window.visible = True
     page.window.opacity = 0.0
     page.window.ignore_mouse_events = True
