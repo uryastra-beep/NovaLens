@@ -351,11 +351,15 @@ This version adds the graphical settings interface, persistent configuration, cu
 
 ---
 
-## Contributions
+## Contributions and Support
 
 NovaLens is still in an early stage of development.
 
 Suggestions, bug reports, and contributions are welcome as the project continues to grow.
+
+For bug reports, technical support, community discussions, and project updates, join the official Nova Lens Discord server:
+
+https://discord.gg/Dfns48WEqH
 
 ---
 
@@ -376,3 +380,5 @@ A project license has not been selected yet.
 ---
 
 Made with Python, Flet, and Google Gemini.
+
+**Join our Discord for more information:** https://discord.gg/Dfns48WEqH
