@@ -1,5 +1,7 @@
 # Nova Lens v1.0.1 — First Windows Release
 
+**Release date:** August 6, 2026
+
 Nova Lens v1.0.1 is the first official release that includes a packaged Windows executable.
 
 ## Highlights
