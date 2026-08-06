@@ -22,18 +22,22 @@ class RollingAudioBuffer:
         self.channels = max(1, int(channels))
         self.sample_width = 2  # int16
 
-        self._max_bytes = (
-            self.duration_seconds
-            * self.sample_rate
-            * self.channels
-            * self.sample_width
-        )
+        self._max_bytes = 0
+        self._update_max_bytes()
 
         self._chunks: deque[bytes] = deque()
         self._total_bytes = 0
         self._lock = threading.Lock()
         self._stream: sd.RawInputStream | None = None
         self._last_error = ""
+
+    def _update_max_bytes(self) -> None:
+        self._max_bytes = (
+            self.duration_seconds
+            * self.sample_rate
+            * self.channels
+            * self.sample_width
+        )
 
     @property
     def last_error(self) -> str:
@@ -42,7 +46,14 @@ class RollingAudioBuffer:
     @property
     def is_running(self) -> bool:
         stream = self._stream
-        return bool(stream is not None and stream.active)
+
+        if stream is None:
+            return False
+
+        try:
+            return bool(stream.active)
+        except Exception:
+            return False
 
     def _callback(self, indata, frames, time_info, status) -> None:
         del frames, time_info
@@ -76,6 +87,13 @@ class RollingAudioBuffer:
 
         self._last_error = ""
 
+        device_info = sd.query_devices(kind="input")
+        default_rate = int(round(float(device_info["default_samplerate"])))
+
+        if default_rate > 0:
+            self.sample_rate = default_rate
+            self._update_max_bytes()
+
         stream = sd.RawInputStream(
             samplerate=self.sample_rate,
             channels=self.channels,
@@ -91,18 +109,16 @@ class RollingAudioBuffer:
         stream = self._stream
         self._stream = None
 
-        if stream is None:
-            return
+        if stream is not None:
+            try:
+                stream.stop()
+            except Exception:
+                pass
 
-        try:
-            stream.stop()
-        except Exception:
-            pass
-
-        try:
-            stream.close()
-        except Exception:
-            pass
+            try:
+                stream.close()
+            except Exception:
+                pass
 
         with self._lock:
             self._chunks.clear()
