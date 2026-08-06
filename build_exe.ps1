@@ -44,4 +44,5 @@ Write-Host ""
 Write-Host "Build complete:"
 Write-Host $executable
 Write-Host ""
-Write-Host "Place a .env file next to NovaLens.exe before testing."
+Write-Host "Open NovaLens.exe and add your own Gemini API key in Settings."
+Write-Host "Nova Lens stores the key locally in the user's AppData folder."
