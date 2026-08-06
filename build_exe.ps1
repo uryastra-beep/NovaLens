@@ -10,6 +10,7 @@ $checksumFile = "$releaseZip.sha256"
 Write-Host "Stopping running Nova Lens processes..."
 Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 function Remove-DirectoryWithRetry {
@@ -39,6 +40,47 @@ function Remove-DirectoryWithRetry {
     }
 }
 
+function Compress-ReleaseWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination,
+        [int]$Attempts = 8
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+            Compress-Archive `
+                -Path $Source `
+                -DestinationPath $Destination `
+                -CompressionLevel Optimal `
+                -Force `
+                -ErrorAction Stop
+
+            if (-not (Test-Path $Destination)) {
+                throw "The ZIP command finished without creating the file."
+            }
+
+            return
+        }
+        catch {
+            Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+
+            if ($attempt -eq $Attempts) {
+                throw
+            }
+
+            Write-Host "Windows still has a build file open. Retrying ZIP creation ($attempt/$Attempts)..."
+            Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        }
+    }
+}
+
 Write-Host "Cleaning previous build output..."
 Remove-DirectoryWithRetry (Join-Path $PSScriptRoot "build")
 Remove-DirectoryWithRetry (Join-Path $PSScriptRoot "dist")
@@ -64,7 +106,7 @@ $packArguments = @(
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
-    "--hidden-import", "popup", "popup_exe", "config", "multimodal",
+    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "native_clickthrough",
     "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;."
 )
 
@@ -99,8 +141,13 @@ Remove-Item (Join-Path $distFolder "config.json") -Force -ErrorAction SilentlyCo
 Remove-Item (Join-Path $distFolder "config.tmp.json") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "debug.log") -Force -ErrorAction SilentlyContinue
 
+Write-Host "Waiting for the build tools to release packaged files..."
+Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 5
+
 Write-Host "Creating the official Windows release ZIP..."
-Compress-Archive -Path $distFolder -DestinationPath $releaseZip -Force
+Compress-ReleaseWithRetry -Source $distFolder -Destination $releaseZip
 
 $hash = (Get-FileHash -Path $releaseZip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$hash  $releaseName" | Set-Content -Path $checksumFile -Encoding ascii
