@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import base64
 import os
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 
 CARPETA_PROYECTO = Path(__file__).resolve().parent
@@ -35,6 +36,9 @@ INSTRUCCIONES_NOVA_LENS = (
 
 
 client = genai.Client(api_key=API_KEY)
+CONFIGURACION_GENERACION = types.GenerateContentConfig(
+    system_instruction=INSTRUCCIONES_NOVA_LENS,
+)
 
 
 def _extraer_texto(respuesta: object) -> str:
@@ -54,6 +58,15 @@ def _mensaje_error(error: Exception) -> str:
     )
 
 
+def _generar_contenido(contenido: Any) -> str:
+    respuesta = client.models.generate_content(
+        model=MODELO,
+        contents=contenido,
+        config=CONFIGURACION_GENERACION,
+    )
+    return _extraer_texto(respuesta)
+
+
 def preguntar_a_novalens(pregunta: str) -> str:
     """Send a text question to Gemini and return only its answer."""
 
@@ -63,13 +76,7 @@ def preguntar_a_novalens(pregunta: str) -> str:
         return "No detecté ninguna pregunta."
 
     try:
-        interaction = client.interactions.create(
-            model=MODELO,
-            system_instruction=INSTRUCCIONES_NOVA_LENS,
-            input=pregunta,
-        )
-
-        respuesta = _extraer_texto(interaction)
+        respuesta = _generar_contenido(pregunta)
 
         if not respuesta:
             return "Gemini respondió, pero no devolvió texto."
@@ -96,20 +103,15 @@ def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
     )
 
     try:
-        interaction = client.interactions.create(
-            model=MODELO,
-            system_instruction=INSTRUCCIONES_NOVA_LENS,
-            input=[
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image",
-                    "data": base64.b64encode(imagen_jpeg).decode("utf-8"),
-                    "mime_type": "image/jpeg",
-                },
-            ],
+        texto = _generar_contenido(
+            [
+                types.Part.from_text(text=prompt),
+                types.Part.from_bytes(
+                    data=imagen_jpeg,
+                    mime_type="image/jpeg",
+                ),
+            ]
         )
-
-        texto = _extraer_texto(interaction)
         return texto or "Gemini analizó la pantalla, pero no devolvió texto."
 
     except Exception as error:
@@ -133,20 +135,15 @@ def transcribir_y_responder_audio(audio_wav: bytes) -> str:
     )
 
     try:
-        interaction = client.interactions.create(
-            model=MODELO,
-            system_instruction=INSTRUCCIONES_NOVA_LENS,
-            input=[
-                {"type": "text", "text": prompt},
-                {
-                    "type": "audio",
-                    "data": base64.b64encode(audio_wav).decode("utf-8"),
-                    "mime_type": "audio/wav",
-                },
-            ],
+        texto = _generar_contenido(
+            [
+                types.Part.from_text(text=prompt),
+                types.Part.from_bytes(
+                    data=audio_wav,
+                    mime_type="audio/wav",
+                ),
+            ]
         )
-
-        texto = _extraer_texto(interaction)
         return texto or "Gemini procesó el audio, pero no devolvió texto."
 
     except Exception as error:
