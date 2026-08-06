@@ -1,3 +1,4 @@
+# Official Nova Lens v1.0.1 release automation
 name: Publish Windows Release
 
 on:
