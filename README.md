@@ -4,7 +4,7 @@
 
 Nova Lens is a Windows desktop assistant that lets you ask an AI questions from any application through a floating popup.
 
-The app runs in the background, can be opened with global hotkeys, can detect questions visible on the screen, and can transcribe and answer spoken questions.
+The app runs in the background, can be opened with global hotkeys, can detect questions visible on the screen, and can transcribe and answer recent spoken questions.
 
 > Nova Lens is currently in **Beta**.
 
@@ -13,7 +13,7 @@ The app runs in the background, can be opened with global hotkeys, can detect qu
 ## Project Status
 
 - **Latest public release:** `v0.2.0-beta`
-- **Development branch:** includes experimental screen and audio support
+- **Development branch:** includes experimental screen and rolling-audio support
 - **Supported platform:** Windows
 - **Language:** Python
 - **Interface:** Flet
@@ -33,7 +33,7 @@ Nova Lens is currently distributed as source code and is intended mainly for dev
 - Basic context between consecutive questions.
 - Full-screen question detection.
 - Automatic screenshot analysis with Gemini.
-- Microphone recording for spoken questions.
+- Rolling 10-second microphone buffer stored in memory.
 - Audio transcription followed by an automatic answer.
 - Global hotkeys.
 - Entry and fade-out animations.
@@ -62,7 +62,7 @@ Nova Lens is currently distributed as source code and is intended mainly for dev
 | Open or reactivate the text popup | `P + Enter` |
 | Open Nova Lens settings | `P + Shift + Enter` |
 | Analyze the visible screen | `P + Shift + S` |
-| Record, transcribe, and answer audio | `P + Shift + A` |
+| Transcribe and answer the previous 10 seconds of audio | `P + Shift + A` |
 | Completely close Nova Lens | `P + Backspace` |
 | Completely close Nova Lens | `P + Delete` |
 
@@ -96,15 +96,20 @@ When `P + Shift + S` is pressed:
 
 The screenshot is captured before the response popup appears, so the Nova Lens window is not included in the image.
 
-### Spoken questions
+### Recent spoken questions
+
+While Nova Lens is running, it continuously keeps only the latest 10 seconds of microphone audio in a circular memory buffer.
 
 When `P + Shift + A` is pressed:
 
-1. Nova Lens records the default microphone for 10 seconds.
-2. The recording is sent directly to Gemini as a WAV audio file.
+1. Nova Lens takes a snapshot of the previous 10 seconds from the in-memory buffer.
+2. The audio is prepared as a temporary WAV file.
 3. Gemini transcribes the spoken question.
 4. Gemini answers the transcribed question.
 5. Nova Lens displays both the transcription and the answer.
+6. The temporary WAV file is deleted immediately after it is read or when the process closes.
+
+Older audio is continuously overwritten and is never sent to Gemini unless the audio hotkey is pressed.
 
 ---
 
@@ -146,6 +151,7 @@ NovaLens/
 ├── main.py
 ├── multimodal.py
 ├── popup.py
+├── rolling_audio.py
 ├── requirements.txt
 ├── README.md
 ├── .env
@@ -156,9 +162,10 @@ NovaLens/
 
 ### Main Files
 
-- `main.py`: keeps Nova Lens running and manages global hotkeys and child processes.
+- `main.py`: keeps Nova Lens running, manages hotkeys, maintains the rolling audio buffer, and launches child processes.
 - `popup.py`: contains the persistent text popup, animations, timer, and click-through behavior.
-- `multimodal.py`: captures the screen, records audio, and displays multimodal responses.
+- `multimodal.py`: captures the screen, reads recent buffered audio, and displays multimodal responses.
+- `rolling_audio.py`: keeps only the latest microphone audio in a circular in-memory buffer.
 - `backend.py`: manages text, screenshot, and audio requests sent to Google Gemini.
 - `config.py`: contains the graphical settings interface.
 - `config_manager.py`: loads, validates, saves, and restores Nova Lens settings.
@@ -251,15 +258,18 @@ sounddevice
 
 ## Privacy
 
-Nova Lens only captures the screen or microphone after the user presses the corresponding hotkey.
+Nova Lens uses the microphone while the app is running so it can recover a question that was spoken immediately before the audio hotkey was pressed.
 
+- Only the latest 10 seconds are kept in a circular RAM buffer.
+- Older microphone audio is continuously overwritten.
+- The rolling buffer is not intentionally written to disk.
+- Audio is not sent to Gemini until `P + Shift + A` is pressed.
+- After the hotkey is pressed, Nova Lens creates a temporary WAV file for the child process and deletes it immediately after reading it or when the process closes.
 - `P + Shift + S` captures the full visible desktop and sends the screenshot to Google Gemini.
-- `P + Shift + A` records the default microphone for 10 seconds and sends the WAV audio to Google Gemini.
-- Screenshots and audio recordings are processed in memory and are not intentionally saved as permanent local files by Nova Lens.
-- Nova Lens does not continuously monitor the screen or microphone.
+- Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
 - API keys must never be included directly in the source code or shared in bug reports.
 
-Do not activate screen or audio capture while sensitive information is visible or audible.
+Do not run Nova Lens around private conversations unless everyone present understands that the microphone buffer is active.
 
 ---
 
@@ -268,8 +278,9 @@ Do not activate screen or audio capture while sensitive information is visible o
 - Nova Lens currently only supports Windows.
 - Screen detection captures the complete desktop instead of a selected region.
 - The screen and audio hotkeys are not configurable yet.
-- Audio recording currently lasts a fixed 10 seconds.
+- The rolling audio duration is currently fixed at 10 seconds.
 - The selected default microphone must work correctly in Windows.
+- Nova Lens currently has no tray indicator showing that the microphone buffer is active.
 - Video analysis has not been implemented yet.
 - The error-reporting button does not submit reports yet.
 - There is no official installer or executable yet.
@@ -295,10 +306,12 @@ Do not activate screen or audio capture while sensitive information is visible o
 - [x] Optional startup with Windows.
 - [x] Full-screen question detection.
 - [x] Screenshot analysis and automatic answers.
-- [x] Audio recording and transcription.
-- [x] Automatic answers to spoken questions.
+- [x] Rolling 10-second microphone buffer.
+- [x] Audio transcription and automatic answers.
+- [ ] Microphone activity indicator.
+- [ ] Option to enable or disable the rolling audio buffer.
+- [ ] Configurable rolling-audio duration.
 - [ ] Configurable screen and audio hotkeys.
-- [ ] Variable or push-to-talk audio duration.
 - [ ] Screen region selection.
 - [ ] Compact and normal display modes.
 - [ ] Short video analysis.
@@ -317,7 +330,7 @@ The latest public beta release is:
 v0.2.0-beta
 ```
 
-The multimodal screen and audio features are currently available on the development branch and should be tested before the next public beta release.
+The multimodal screen and rolling-audio features are currently available on the development branch and should be tested before the next public beta release.
 
 ---
 
