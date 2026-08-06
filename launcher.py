@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 APP_NAME = "NovaLens"
 CHILD_MODULES = {
-    "popup.py": "popup",
+    "popup.py": "popup_exe",
     "config.py": "config",
     "multimodal.py": "multimodal",
 }
