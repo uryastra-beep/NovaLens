@@ -7,6 +7,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from config_manager import cargar_api_key
 
@@ -45,16 +46,14 @@ def _obtener_api_key() -> str:
     return clave
 
 
-def _crear_cliente() -> genai.Client:
-    return genai.Client(api_key=_obtener_api_key())
+def _crear_cliente(clave: str | None = None) -> genai.Client:
+    return genai.Client(api_key=clave or _obtener_api_key())
 
 
 def _extraer_texto(respuesta: object) -> str:
     texto = getattr(respuesta, "output_text", None)
-
     if not texto:
         texto = getattr(respuesta, "text", None)
-
     return str(texto or "").strip()
 
 
@@ -63,9 +62,9 @@ def _mensaje_error(error: Exception) -> str:
 
     if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in detalle:
         detalle = (
-            "Google rechazó la autenticación de la API key. "
-            "Verificá que la key siga activa en Google AI Studio y que esté "
-            "vinculada a un proyecto con Gemini API habilitada.\n\n"
+            "Google rechazó el tipo de autenticación de esta key. "
+            "Creá o copiá una Gemini API key desde Google AI Studio y volvé "
+            "a guardarla en Settings.\n\n"
             f"Detalle original: {error}"
         )
 
@@ -83,10 +82,39 @@ def _texto_con_instrucciones(texto: str) -> str:
     )
 
 
-def _generar_interaccion(entrada: Any) -> str:
-    """Call the current Gemini Interactions API used by auth (AQ.) keys."""
+def _parece_auth_key(clave: str) -> bool:
+    """New Google AI Studio authorization keys currently start with AQ."""
 
-    cliente = _crear_cliente()
+    return clave.lstrip().startswith("AQ.")
+
+
+def _entrada_interactions_texto(texto: str) -> str:
+    return _texto_con_instrucciones(texto)
+
+
+def _entrada_interactions_multimodal(
+    prompt: str,
+    datos: bytes,
+    mime_type: str,
+    tipo: str,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "type": "text",
+            "text": _texto_con_instrucciones(prompt),
+        },
+        {
+            "type": tipo,
+            "data": base64.b64encode(datos).decode("ascii"),
+            "mime_type": mime_type,
+        },
+    ]
+
+
+def _generar_con_interactions(
+    cliente: genai.Client,
+    entrada: Any,
+) -> str:
     respuesta = cliente.interactions.create(
         model=MODELO,
         input=entrada,
@@ -95,24 +123,107 @@ def _generar_interaccion(entrada: Any) -> str:
     return _extraer_texto(respuesta)
 
 
+def _generar_con_generate_content(
+    cliente: genai.Client,
+    contenido: Any,
+) -> str:
+    respuesta = cliente.models.generate_content(
+        model=MODELO,
+        contents=contenido,
+        config=types.GenerateContentConfig(
+            system_instruction=INSTRUCCIONES_NOVA_LENS,
+        ),
+    )
+    return _extraer_texto(respuesta)
+
+
+def _generar_texto(texto: str) -> str:
+    """Automatically use the endpoint matching the user's key type."""
+
+    clave = _obtener_api_key()
+    cliente = _crear_cliente(clave)
+
+    if _parece_auth_key(clave):
+        primario = lambda: _generar_con_interactions(
+            cliente,
+            _entrada_interactions_texto(texto),
+        )
+        secundario = lambda: _generar_con_generate_content(cliente, texto)
+    else:
+        primario = lambda: _generar_con_generate_content(cliente, texto)
+        secundario = lambda: _generar_con_interactions(
+            cliente,
+            _entrada_interactions_texto(texto),
+        )
+
+    try:
+        return primario()
+    except Exception as error:
+        # Google is migrating between standard and authorization keys. If the
+        # selected endpoint rejects only the credential type, try the other
+        # official endpoint once before returning the error.
+        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" not in str(error):
+            raise
+        return secundario()
+
+
+def _generar_multimodal(
+    prompt: str,
+    datos: bytes,
+    mime_type: str,
+    tipo_interactions: str,
+) -> str:
+    clave = _obtener_api_key()
+    cliente = _crear_cliente(clave)
+
+    contenido_generate = [
+        prompt,
+        types.Part.from_bytes(data=datos, mime_type=mime_type),
+    ]
+    contenido_interactions = _entrada_interactions_multimodal(
+        prompt,
+        datos,
+        mime_type,
+        tipo_interactions,
+    )
+
+    if _parece_auth_key(clave):
+        primario = lambda: _generar_con_interactions(
+            cliente,
+            contenido_interactions,
+        )
+        secundario = lambda: _generar_con_generate_content(
+            cliente,
+            contenido_generate,
+        )
+    else:
+        primario = lambda: _generar_con_generate_content(
+            cliente,
+            contenido_generate,
+        )
+        secundario = lambda: _generar_con_interactions(
+            cliente,
+            contenido_interactions,
+        )
+
+    try:
+        return primario()
+    except Exception as error:
+        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" not in str(error):
+            raise
+        return secundario()
+
+
 def preguntar_a_novalens(pregunta: str) -> str:
     """Send a text question to Gemini and return only its answer."""
 
     pregunta = pregunta.strip()
-
     if not pregunta:
         return "No detecté ninguna pregunta."
 
     try:
-        respuesta = _generar_interaccion(
-            _texto_con_instrucciones(pregunta)
-        )
-
-        if not respuesta:
-            return "Gemini respondió, pero no devolvió texto."
-
-        return respuesta
-
+        respuesta = _generar_texto(pregunta)
+        return respuesta or "Gemini respondió, pero no devolvió texto."
     except Exception as error:
         return _mensaje_error(error)
 
@@ -133,21 +244,13 @@ def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
     )
 
     try:
-        texto = _generar_interaccion(
-            [
-                {
-                    "type": "text",
-                    "text": _texto_con_instrucciones(prompt),
-                },
-                {
-                    "type": "image",
-                    "data": base64.b64encode(imagen_jpeg).decode("ascii"),
-                    "mime_type": "image/jpeg",
-                },
-            ]
+        texto = _generar_multimodal(
+            prompt,
+            imagen_jpeg,
+            "image/jpeg",
+            "image",
         )
         return texto or "Gemini analizó la pantalla, pero no devolvió texto."
-
     except Exception as error:
         return _mensaje_error(error)
 
@@ -169,20 +272,12 @@ def transcribir_y_responder_audio(audio_wav: bytes) -> str:
     )
 
     try:
-        texto = _generar_interaccion(
-            [
-                {
-                    "type": "text",
-                    "text": _texto_con_instrucciones(prompt),
-                },
-                {
-                    "type": "audio",
-                    "data": base64.b64encode(audio_wav).decode("ascii"),
-                    "mime_type": "audio/wav",
-                },
-            ]
+        texto = _generar_multimodal(
+            prompt,
+            audio_wav,
+            "audio/wav",
+            "audio",
         )
         return texto or "Gemini procesó el audio, pero no devolvió texto."
-
     except Exception as error:
         return _mensaje_error(error)
