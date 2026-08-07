@@ -4,9 +4,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 from unittest.mock import patch
 
 import config_manager
+import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
 from rolling_audio import RollingAudioBuffer
@@ -125,6 +128,63 @@ class ScreenRegionTests(unittest.TestCase):
 
     def test_rejects_accidental_tiny_selection(self) -> None:
         self.assertIsNone(normalizar_region((10, 10), (15, 18), 100, 80))
+
+    def test_selector_prefers_thread_dpi_context_after_flet_starts(self) -> None:
+        set_thread = mock.Mock(return_value=123)
+        set_process = mock.Mock(return_value=1)
+        windll = SimpleNamespace(
+            user32=SimpleNamespace(
+                SetThreadDpiAwarenessContext=set_thread,
+                SetProcessDpiAwarenessContext=set_process,
+            ),
+            shcore=SimpleNamespace(
+                SetProcessDpiAwareness=mock.Mock(),
+            ),
+        )
+
+        with (
+            mock.patch.object(screen_selector.os, "name", "nt"),
+            mock.patch.object(
+                screen_selector.ctypes,
+                "windll",
+                windll,
+                create=True,
+            ),
+        ):
+            screen_selector._preparar_dpi()
+
+        set_thread.assert_called_once()
+        set_process.assert_not_called()
+        windll.shcore.SetProcessDpiAwareness.assert_not_called()
+
+    def test_selector_checks_failed_context_before_using_fallback(self) -> None:
+        set_thread = mock.Mock(return_value=0)
+        set_process = mock.Mock(return_value=0)
+        set_legacy = mock.Mock()
+        windll = SimpleNamespace(
+            user32=SimpleNamespace(
+                SetThreadDpiAwarenessContext=set_thread,
+                SetProcessDpiAwarenessContext=set_process,
+            ),
+            shcore=SimpleNamespace(SetProcessDpiAwareness=set_legacy),
+        )
+
+        with (
+            mock.patch.object(screen_selector.os, "name", "nt"),
+            mock.patch.object(
+                screen_selector.ctypes,
+                "windll",
+                windll,
+                create=True,
+            ),
+        ):
+            screen_selector._preparar_dpi()
+
+        set_thread.assert_called_once()
+        set_process.assert_called_once()
+        set_legacy.assert_called_once_with(
+            screen_selector.PROCESS_PER_MONITOR_DPI_AWARE
+        )
 
 
 class RollingAudioBufferTests(unittest.TestCase):
