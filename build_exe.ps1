@@ -92,6 +92,18 @@ python -m pip install -r requirements.txt
 Write-Host "Installing pinned build dependencies..."
 python -m pip install -r requirements-build.txt
 
+# Resolve the Flet CLI from the same Python environment used by pip instead of
+# relying on the user's PATH. This works with activated virtual environments,
+# user-site installs, and GitHub Actions.
+$scriptsDir = (python -c "import sysconfig; print(sysconfig.get_path('scripts'))").Trim()
+$fletExe = Join-Path $scriptsDir "flet.exe"
+
+if (-not (Test-Path $fletExe)) {
+    throw "Flet was installed for the active Python environment, but its CLI was not found at: $fletExe"
+}
+
+Write-Host "Using Flet CLI: $fletExe"
+
 $packArguments = @(
     "pack",
     "launcher.py",
@@ -119,7 +131,11 @@ else {
 }
 
 Write-Host "Building Nova Lens v$version for Windows x64..."
-flet @packArguments
+& $fletExe @packArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Flet pack failed with exit code $LASTEXITCODE."
+}
 
 $distFolder = Join-Path $PSScriptRoot "dist\NovaLens"
 $executable = Join-Path $distFolder "NovaLens.exe"
