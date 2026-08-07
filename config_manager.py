@@ -63,6 +63,8 @@ def normalizar_bool(valor: Any, predeterminado: bool) -> bool:
     if isinstance(valor, bool):
         return valor
     if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        if isinstance(valor, float) and not math.isfinite(valor):
+            return predeterminado
         return bool(valor)
     if isinstance(valor, str):
         texto = valor.strip().lower()
@@ -184,10 +186,12 @@ def restaurar_configuracion() -> dict[str, Any]:
 
 
 def cargar_api_key() -> str:
+    fallback = os.getenv("GEMINI_API_KEY", "").strip()
+
     try:
         lineas = ARCHIVO_ENV.read_text(encoding="utf-8").splitlines()
     except OSError:
-        return os.getenv("GEMINI_API_KEY", "").strip()
+        return fallback
 
     for linea in lineas:
         contenido = linea.strip()
@@ -198,8 +202,10 @@ def cargar_api_key() -> str:
             clave = valor.strip()
             if len(clave) >= 2 and clave[0] == clave[-1] and clave[0] in {'"', "'"}:
                 clave = clave[1:-1]
-            return clave.strip()
-    return ""
+            clave = clave.strip()
+            return clave or fallback
+
+    return fallback
 
 
 def guardar_api_key(valor: str) -> str:
