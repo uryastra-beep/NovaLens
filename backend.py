@@ -2,131 +2,102 @@ from __future__ import annotations
 
 import base64
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 
-from config_manager import cargar_api_key
+from config_manager import cargar_api_key, cargar_configuracion
 
 
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_ENV = CARPETA_PROYECTO / ".env"
-
-# Source-mode fallback. In the packaged build, launcher.py loads the user's
-# AppData environment before this module is imported.
 load_dotenv(ARCHIVO_ENV, override=False)
 
-# The packaged popup remains alive at zero opacity to avoid Flet's collapsed
-# viewport bug. A small Win32 watcher guarantees that this invisible window
-# cannot intercept mouse clicks.
-if os.name == "nt" and "popup_exe" in Path(sys.argv[0]).stem.lower():
-    try:
-        from native_clickthrough import start_native_clickthrough_watch
-
-        start_native_clickthrough_watch()
-    except Exception:
-        pass
-
 MODELO = "gemini-3.6-flash"
+INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
-INSTRUCCIONES_NOVA_LENS = (
-    "Sos Nova Lens, un asistente que responde preguntas escritas, "
-    "detectadas en capturas de pantalla o habladas en audio. "
-    "Respondé en el mismo idioma de la pregunta. "
-    "Da respuestas claras, directas y relativamente breves. "
-    "Cuando sea un ejercicio, explicá solamente los pasos necesarios. "
-    "Si falta información, indicá qué falta y no inventés datos."
-)
+TEXTOS = {
+    "english": {
+        "instructions": (
+            "You are Nova Lens, an assistant that answers written questions, "
+            "questions detected in screenshots, and spoken questions in audio. "
+            "Reply in the same language as the user's request. Be clear, direct, "
+            "and relatively brief. For exercises, explain only the necessary "
+            "steps. If information is missing, say what is missing and do not invent it."
+        ),
+        "no_key": "No Gemini API key was found. Open Settings and save your key.",
+        "no_question": "I did not detect a question.",
+        "empty": "Gemini returned no text.",
+        "auth_error": (
+            "Google rejected this authorization key before Nova Lens could send "
+            "the request. Open Google AI Studio, verify that the key is active and "
+            "bound to a project with the Gemini API enabled, then save it again in Settings."
+        ),
+        "generic_error": "Nova Lens could not get a response from Gemini.",
+    },
+    "spanish": {
+        "instructions": (
+            "Sos Nova Lens, un asistente que responde preguntas escritas, "
+            "detectadas en capturas de pantalla o habladas en audio. Respondé "
+            "en el mismo idioma de la solicitud. Sé claro, directo y relativamente "
+            "breve. En ejercicios, explicá solo los pasos necesarios. Si falta "
+            "información, decí qué falta y no inventés datos."
+        ),
+        "no_key": "No encontré una API key de Gemini. Abrí Configuración y guardá tu key.",
+        "no_question": "No detecté ninguna pregunta.",
+        "empty": "Gemini no devolvió texto.",
+        "auth_error": (
+            "Google rechazó esta clave de autorización antes de que Nova Lens pudiera "
+            "enviar la solicitud. Abrí Google AI Studio, verificá que la clave esté "
+            "activa y vinculada a un proyecto con Gemini API habilitada, y guardala "
+            "de nuevo en Configuración."
+        ),
+        "generic_error": "Nova Lens no pudo obtener una respuesta de Gemini.",
+    },
+}
+
+
+def _idioma() -> str:
+    idioma = cargar_configuracion().get("system", {}).get("language", "english")
+    return idioma if idioma in TEXTOS else "english"
+
+
+def _t(clave: str) -> str:
+    return TEXTOS[_idioma()][clave]
 
 
 def _obtener_api_key() -> str:
-    """Read the latest BYOK key instead of caching it at import time."""
-
-    clave = cargar_api_key().strip()
+    clave = cargar_api_key().strip() or os.getenv("GEMINI_API_KEY", "").strip()
     if not clave:
-        clave = os.getenv("GEMINI_API_KEY", "").strip()
-
-    if not clave:
-        raise RuntimeError(
-            "No encontré una API key de Gemini. Abrí Settings y guardá una."
-        )
-
+        raise RuntimeError(_t("no_key"))
     return clave
 
 
-def _crear_cliente(clave: str | None = None) -> genai.Client:
-    return genai.Client(api_key=clave or _obtener_api_key())
-
-
 def _extraer_texto(respuesta: object) -> str:
-    texto = getattr(respuesta, "output_text", None)
-    if not texto:
-        texto = getattr(respuesta, "text", None)
+    texto = getattr(respuesta, "output_text", None) or getattr(respuesta, "text", None)
     return str(texto or "").strip()
 
 
-def _mensaje_error(error: Exception) -> str:
-    detalle = str(error)
-
-    if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in detalle:
-        detalle = (
-            "Google rechazó el tipo de autenticación de esta key. "
-            "Creá o copiá una Gemini API key desde Google AI Studio y volvé "
-            "a guardarla en Settings.\n\n"
-            f"Detalle original: {error}"
-        )
-
-    return (
-        "No pude obtener una respuesta de Gemini.\n\n"
-        f"Tipo de error: {type(error).__name__}\n"
-        f"Detalle: {detalle}"
-    )
-
-
 def _texto_con_instrucciones(texto: str) -> str:
-    return (
-        f"Instrucciones de Nova Lens:\n{INSTRUCCIONES_NOVA_LENS}\n\n"
-        f"Solicitud del usuario:\n{texto}"
-    )
+    return f"System instructions:\n{_t('instructions')}\n\nUser request:\n{texto}"
 
 
-def _parece_auth_key(clave: str) -> bool:
-    """New Google AI Studio authorization keys currently start with AQ."""
-
-    return clave.lstrip().startswith("AQ.")
-
-
-def _entrada_interactions_texto(texto: str) -> str:
-    return _texto_con_instrucciones(texto)
+def _es_error_tipo_credencial(error: Exception | str) -> bool:
+    detalle = str(error)
+    return "ACCESS_TOKEN_TYPE_UNSUPPORTED" in detalle or "UNAUTHENTICATED" in detalle
 
 
-def _entrada_interactions_multimodal(
-    prompt: str,
-    datos: bytes,
-    mime_type: str,
-    tipo: str,
-) -> list[dict[str, str]]:
-    return [
-        {
-            "type": "text",
-            "text": _texto_con_instrucciones(prompt),
-        },
-        {
-            "type": tipo,
-            "data": base64.b64encode(datos).decode("ascii"),
-            "mime_type": mime_type,
-        },
-    ]
+def _mensaje_error(error: Exception) -> str:
+    if _es_error_tipo_credencial(error):
+        return f"{_t('auth_error')}\n\nTechnical detail: {error}"
+    return f"{_t('generic_error')}\n\n{type(error).__name__}: {error}"
 
 
-def _generar_con_interactions(
-    cliente: genai.Client,
-    entrada: Any,
-) -> str:
+def _crear_interaccion_sdk(entrada: Any) -> str:
+    cliente = genai.Client(api_key=_obtener_api_key())
     respuesta = cliente.interactions.create(
         model=MODELO,
         input=entrada,
@@ -135,161 +106,92 @@ def _generar_con_interactions(
     return _extraer_texto(respuesta)
 
 
-def _generar_con_generate_content(
-    cliente: genai.Client,
-    contenido: Any,
-) -> str:
-    respuesta = cliente.models.generate_content(
-        model=MODELO,
-        contents=contenido,
-        config=types.GenerateContentConfig(
-            system_instruction=INSTRUCCIONES_NOVA_LENS,
-        ),
+def _crear_interaccion_rest(entrada: Any) -> str:
+    respuesta = httpx.post(
+        INTERACTIONS_URL,
+        headers={
+            "x-goog-api-key": _obtener_api_key(),
+            "Content-Type": "application/json",
+        },
+        json={"model": MODELO, "input": entrada, "store": False},
+        timeout=60,
     )
-    return _extraer_texto(respuesta)
+    respuesta.raise_for_status()
+    datos = respuesta.json()
+    return str(datos.get("output_text") or "").strip()
 
 
-def _generar_texto(texto: str) -> str:
-    """Automatically use the endpoint matching the user's key type."""
-
-    clave = _obtener_api_key()
-    cliente = _crear_cliente(clave)
-
-    if _parece_auth_key(clave):
-        primario = lambda: _generar_con_interactions(
-            cliente,
-            _entrada_interactions_texto(texto),
-        )
-        secundario = lambda: _generar_con_generate_content(cliente, texto)
-    else:
-        primario = lambda: _generar_con_generate_content(cliente, texto)
-        secundario = lambda: _generar_con_interactions(
-            cliente,
-            _entrada_interactions_texto(texto),
-        )
-
+def _generar_interaccion(entrada: Any) -> str:
     try:
-        return primario()
-    except Exception as error:
-        # Google is migrating between standard and authorization keys. If the
-        # selected endpoint rejects only the credential type, try the other
-        # official endpoint once before returning the error.
-        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" not in str(error):
-            raise
-        return secundario()
-
-
-def _generar_multimodal(
-    prompt: str,
-    datos: bytes,
-    mime_type: str,
-    tipo_interactions: str,
-) -> str:
-    clave = _obtener_api_key()
-    cliente = _crear_cliente(clave)
-
-    contenido_generate = [
-        prompt,
-        types.Part.from_bytes(data=datos, mime_type=mime_type),
-    ]
-    contenido_interactions = _entrada_interactions_multimodal(
-        prompt,
-        datos,
-        mime_type,
-        tipo_interactions,
-    )
-
-    if _parece_auth_key(clave):
-        primario = lambda: _generar_con_interactions(
-            cliente,
-            contenido_interactions,
-        )
-        secundario = lambda: _generar_con_generate_content(
-            cliente,
-            contenido_generate,
-        )
-    else:
-        primario = lambda: _generar_con_generate_content(
-            cliente,
-            contenido_generate,
-        )
-        secundario = lambda: _generar_con_interactions(
-            cliente,
-            contenido_interactions,
-        )
-
-    try:
-        return primario()
-    except Exception as error:
-        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" not in str(error):
-            raise
-        return secundario()
+        return _crear_interaccion_sdk(entrada)
+    except Exception as error_sdk:
+        try:
+            return _crear_interaccion_rest(entrada)
+        except Exception as error_rest:
+            if _es_error_tipo_credencial(error_rest):
+                raise RuntimeError(
+                    "The SDK and the official Interactions REST endpoint both "
+                    f"rejected the key. REST error: {error_rest}"
+                ) from error_rest
+            raise RuntimeError(
+                f"SDK error: {error_sdk}; REST fallback error: {error_rest}"
+            ) from error_rest
 
 
 def preguntar_a_novalens(pregunta: str) -> str:
-    """Send a text question to Gemini and return only its answer."""
-
     pregunta = pregunta.strip()
     if not pregunta:
-        return "No detecté ninguna pregunta."
+        return _t("no_question")
 
     try:
-        respuesta = _generar_texto(pregunta)
-        return respuesta or "Gemini respondió, pero no devolvió texto."
+        respuesta = _generar_interaccion(_texto_con_instrucciones(pregunta))
+        return respuesta or _t("empty")
     except Exception as error:
         return _mensaje_error(error)
 
 
-def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
-    """Detect visible questions in a JPEG screenshot and answer them."""
+def _entrada_multimodal(prompt: str, datos: bytes, mime_type: str, tipo: str) -> list[dict[str, str]]:
+    return [
+        {"type": "text", "text": _texto_con_instrucciones(prompt)},
+        {
+            "type": tipo,
+            "data": base64.b64encode(datos).decode("ascii"),
+            "mime_type": mime_type,
+        },
+    ]
 
+
+def analizar_captura_pantalla(imagen_jpeg: bytes) -> str:
     if not imagen_jpeg:
-        return "No pude capturar la pantalla."
+        return "No screenshot data was captured." if _idioma() == "english" else "No se capturaron datos de pantalla."
 
     prompt = (
-        "Analizá esta captura de pantalla completa. Detectá la pregunta, "
-        "problema o ejercicio principal que esté visible y respondelo. "
-        "Si hay varias preguntas claramente visibles, respondelas en orden. "
-        "No describás toda la pantalla ni mencionés que recibiste una captura. "
-        "Si no hay ninguna pregunta legible, decí exactamente: "
-        "No detecté una pregunta legible en la pantalla."
+        "Analyze the entire screenshot. Detect and answer the main visible "
+        "question, problem, or exercise. If several questions are clearly "
+        "visible, answer them in order. Do not describe the whole screen."
     )
-
     try:
-        texto = _generar_multimodal(
-            prompt,
-            imagen_jpeg,
-            "image/jpeg",
-            "image",
+        texto = _generar_interaccion(
+            _entrada_multimodal(prompt, imagen_jpeg, "image/jpeg", "image")
         )
-        return texto or "Gemini analizó la pantalla, pero no devolvió texto."
+        return texto or _t("empty")
     except Exception as error:
         return _mensaje_error(error)
 
 
 def transcribir_y_responder_audio(audio_wav: bytes) -> str:
-    """Transcribe a WAV recording and answer the spoken question."""
-
     if not audio_wav:
-        return "No se grabó ningún audio."
+        return "No audio was recorded." if _idioma() == "english" else "No se grabó ningún audio."
 
     prompt = (
-        "Escuchá este audio. Primero transcribí fielmente la pregunta hablada "
-        "y después respondela. Conservá el idioma original. Usá exactamente "
-        "este formato:\n\n"
-        "Transcripción: <texto detectado>\n\n"
-        "Respuesta: <respuesta clara y directa>\n\n"
-        "Si el audio no contiene una pregunta inteligible, indicalo en ambos "
-        "campos sin inventar palabras."
+        "Listen to this audio. Transcribe the spoken question and answer it. "
+        "Keep the original language. Format the response as: Transcription: "
+        "<text> followed by Answer: <clear answer>."
     )
-
     try:
-        texto = _generar_multimodal(
-            prompt,
-            audio_wav,
-            "audio/wav",
-            "audio",
+        texto = _generar_interaccion(
+            _entrada_multimodal(prompt, audio_wav, "audio/wav", "audio")
         )
-        return texto or "Gemini procesó el audio, pero no devolvió texto."
+        return texto or _t("empty")
     except Exception as error:
         return _mensaje_error(error)
