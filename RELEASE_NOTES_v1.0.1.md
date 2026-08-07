@@ -1,25 +1,34 @@
 # Nova Lens v1.0.1 — First Windows Release
 
-**Release date:** August 6, 2026
+**Release date:** August 7, 2026
 
-Nova Lens v1.0.1 is the first official release that includes a packaged Windows executable. It is distributed as a portable ZIP package and does not require an installer.
+Nova Lens v1.0.1 is the first official release with a packaged Windows executable. It is distributed as a portable ZIP and does not require an installer.
 
 ## Highlights
 
-- Added the official Windows x64 `.exe` package.
-- Added a bring-your-own-key setup for Google Gemini.
-- Added local API-key and settings storage in the user's AppData folder.
+- Added the official portable Windows x64 package.
+- Added bring-your-own-key setup for Google Gemini, with the API key and settings stored locally in the user's AppData folder.
 - Added a persistent background process and global hotkeys.
 - Added the floating text popup with follow-up questions and short conversation context.
+- Added reliable scrolling for long popup answers.
 - Added full visible-desktop screenshot analysis.
 - Added rolling 10-second microphone capture, transcription, and automatic answers.
-- Added the graphical Settings interface.
-- Added customizable popup colors, transparency, font size, border radius, margin, position, and auto-hide time.
-- Added customizable text-popup and close shortcuts.
+- Added the graphical Settings interface with live preview and Restore Defaults.
+- Added English and Spanish localization across the application.
+- Added customizable popup colors, transparency, font size, border radius, margin, position, auto-hide time, and supported shortcuts.
 - Added optional startup with Windows.
-- Fixed repeated popup collapse in the packaged build by keeping the native window alive while hidden.
+- Added pinned dependencies, regression tests, and a manually triggered release workflow.
+
+## Reliability and Safety Fixes
+
+- Fixed repeated popup collapse and ghost-window behavior by keeping the native window alive while hidden.
+- Fixed click-through after the popup hides so the desktop remains interactive.
 - Restored safe popup entry and fade-out animations.
-- Updated the Gemini integration to the current Google GenAI SDK and Gemini 3.6 Flash.
+- Fixed invalid, duplicate, and reserved custom-hotkey handling.
+- Prevented the popup from appearing inside screenshots captured for analysis.
+- Prevented user API keys, settings, temporary credentials, and debug files from being included in release packages.
+- Improved microphone stream recovery and cleanup of temporary audio files.
+- Updated the Gemini integration to Google GenAI and Gemini 3.6 Flash with clearer authentication and runtime errors.
 
 ## Download
 

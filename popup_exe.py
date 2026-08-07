@@ -18,10 +18,11 @@ from config_manager import (
     color_con_opacidad,
     color_con_transparencia,
 )
+from localization import tr
 
 
 if len(sys.argv) < 2:
-    raise SystemExit("popup_exe.py necesita la ruta del archivo de control.")
+    raise SystemExit("popup_exe.py requires the control-file path.")
 
 ARCHIVO_CONTROL = Path(sys.argv[1])
 
@@ -49,6 +50,8 @@ OCULTAR_AL_PERDER_FOCO = COMPORTAMIENTO["click_through_on_blur"]
 
 ALTURA_MINIMA = 165
 ALTURA_MAXIMA = 378
+ALTURA_CONTROLES_FIJOS = 112
+ALTURA_RESPUESTA_MINIMA = 32
 DURACION_ENTRADA_MS = 280
 DURACION_SALIDA_MS = 220
 RETRASO_OCULTAR_POR_BLUR = 0.18
@@ -57,10 +60,7 @@ DESPLAZAMIENTO_INICIAL = (
     0.18 if POSICION_POPUP == "bottom" else -0.18
 )
 
-RESPUESTA_INICIAL = (
-    "Nova Lens está listo. "
-    "Escribí una pregunta en el campo inferior."
-)
+RESPUESTA_INICIAL = tr("popup_ready")
 
 
 class RECT(ctypes.Structure):
@@ -156,6 +156,13 @@ def calcular_altura(texto: str, ancho: int) -> int:
     return limitar_altura(128 + lineas * (TAMANO_FUENTE + 7))
 
 
+def calcular_altura_respuesta(altura_popup: int | float) -> int:
+    return max(
+        ALTURA_RESPUESTA_MINIMA,
+        limitar_altura(altura_popup) - ALTURA_CONTROLES_FIJOS,
+    )
+
+
 async def main(page: ft.Page) -> None:
     _, _, ancho_area, _ = obtener_area_trabajo()
     ancho_popup = max(420, ancho_area - MARGEN_PANTALLA * 2)
@@ -180,6 +187,7 @@ async def main(page: ft.Page) -> None:
     boton_enviar: ft.TextButton
     boton_listo: ft.TextButton
     popup: ft.Container
+    zona_respuesta: ft.ListView | None = None
 
     def aplicar_geometria(altura: int | float) -> int:
         altura_segura = limitar_altura(altura)
@@ -201,11 +209,19 @@ async def main(page: ft.Page) -> None:
         else:
             page.window.top = arriba + MARGEN_PANTALLA
 
+        if zona_respuesta is not None:
+            zona_respuesta.height = calcular_altura_respuesta(altura_segura)
+
         return altura_segura
 
     def cancelar_tarea(tarea: asyncio.Task | None) -> None:
-        if tarea is not None and not tarea.done():
-            tarea.cancel()
+        if tarea is None or tarea.done():
+            return
+        # Auto-hide and blur tasks call hide themselves. Cancelling the current
+        # task here aborts the hide halfway through and leaves a ghost window.
+        if tarea is asyncio.current_task():
+            return
+        tarea.cancel()
 
     def cancelar_temporizador() -> None:
         nonlocal temporizador
@@ -233,8 +249,6 @@ async def main(page: ft.Page) -> None:
         numero_transicion += 1
         transicion_actual = numero_transicion
 
-        # Animate only the Flet content. The native packaged window remains
-        # alive, which preserves the fix for the collapsed-popup bug.
         popup.opacity = 0
         popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         popup.update()
@@ -252,6 +266,27 @@ async def main(page: ft.Page) -> None:
         popup_visible = False
         ocultando = False
         ventana_enfocada = False
+        page.window.opacity = 0.0
+        page.window.ignore_mouse_events = True
+        page.update()
+
+    async def ocultar_inmediatamente() -> None:
+        nonlocal popup_visible
+        nonlocal ventana_enfocada
+        nonlocal ocultando
+        nonlocal numero_transicion
+
+        if cerrando:
+            return
+
+        cancelar_temporizador()
+        cancelar_ocultado_por_blur()
+        numero_transicion += 1
+        ocultando = False
+        popup_visible = False
+        ventana_enfocada = False
+        popup.opacity = 0
+        popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         page.window.opacity = 0.0
         page.window.ignore_mouse_events = True
         page.update()
@@ -388,17 +423,16 @@ async def main(page: ft.Page) -> None:
 
     def construir_pregunta_con_contexto(nueva_pregunta: str) -> str:
         partes = [
-            "El usuario está haciendo una pregunta desde el popup de Nova Lens."
+            "The user is asking from the Nova Lens popup."
         ]
 
         for numero, (pregunta, respuesta) in enumerate(historial[-4:], start=1):
-            partes.append(f"Pregunta anterior {numero}:\n{pregunta}")
-            partes.append(f"Respuesta anterior {numero}:\n{respuesta}")
+            partes.append(f"Previous question {numero}:\n{pregunta}")
+            partes.append(f"Previous answer {numero}:\n{respuesta}")
 
-        partes.append(f"Nueva pregunta:\n{nueva_pregunta}")
+        partes.append(f"New question:\n{nueva_pregunta}")
         partes.append(
-            "Respondé solamente la nueva pregunta. "
-            "Usá el contexto anterior solo si es necesario."
+            "Answer only the new question. Use previous context only when needed."
         )
         return "\n\n".join(partes)
 
@@ -413,7 +447,7 @@ async def main(page: ft.Page) -> None:
         nueva_pregunta = (campo_pregunta.value or "").strip()
 
         if not nueva_pregunta:
-            mensaje_estado.value = "Escribí una pregunta primero."
+            mensaje_estado.value = tr("write_first")
             page.update()
             reiniciar_temporizador()
             return
@@ -426,7 +460,7 @@ async def main(page: ft.Page) -> None:
         boton_enviar.disabled = True
         boton_listo.disabled = True
         indicador.visible = True
-        mensaje_estado.value = "Analizando…"
+        mensaje_estado.value = tr("analyzing")
         page.update()
 
         consulta = construir_pregunta_con_contexto(nueva_pregunta)
@@ -436,10 +470,7 @@ async def main(page: ft.Page) -> None:
                 preguntar_a_novalens,
                 consulta,
             )
-            nueva_respuesta = (nueva_respuesta or "").strip()
-
-            if not nueva_respuesta:
-                nueva_respuesta = "Gemini no devolvió ningún texto."
+            nueva_respuesta = (nueva_respuesta or "").strip() or tr("no_text")
 
             respuesta_actual = nueva_respuesta
             historial.append((nueva_pregunta, nueva_respuesta))
@@ -450,7 +481,7 @@ async def main(page: ft.Page) -> None:
             respuesta_limpia = limpiar_markdown_basico(nueva_respuesta)
             texto_respuesta.value = respuesta_limpia
             campo_pregunta.value = ""
-            mensaje_estado.value = "Respuesta lista."
+            mensaje_estado.value = tr("response_ready")
 
             altura_actual = calcular_altura(
                 respuesta_limpia,
@@ -459,12 +490,11 @@ async def main(page: ft.Page) -> None:
             aplicar_geometria(altura_actual)
 
         except Exception as error:
-            respuesta_actual = (
-                "No pude procesar la pregunta.\n"
-                f"Error: {error}"
-            )
-            texto_respuesta.value = respuesta_actual
-            mensaje_estado.value = "Ocurrió un error."
+            # Backend failures are displayed but never stored as conversation
+            # history, so auth/debug text cannot contaminate later prompts.
+            respuesta_actual = str(error)
+            texto_respuesta.value = limpiar_markdown_basico(respuesta_actual)
+            mensaje_estado.value = tr("error_occurred")
 
         finally:
             procesando = False
@@ -483,6 +513,11 @@ async def main(page: ft.Page) -> None:
             reiniciar_temporizador()
 
             try:
+                await zona_respuesta.scroll_to(offset=0, duration=1)
+            except Exception:
+                pass
+
+            try:
                 await campo_pregunta.focus()
             except Exception:
                 pass
@@ -492,23 +527,21 @@ async def main(page: ft.Page) -> None:
 
         try:
             await ft.Clipboard().set(respuesta_actual)
-            texto_boton_copiar.value = "Copiado"
-            mensaje_estado.value = "Respuesta copiada."
+            texto_boton_copiar.value = tr("copied")
+            mensaje_estado.value = tr("copy_done")
         except Exception:
-            mensaje_estado.value = "No pude copiar la respuesta."
+            mensaje_estado.value = tr("copy_failed")
 
         page.update()
 
     async def informar_error(e=None) -> None:
         registrar_interaccion()
-        mensaje_estado.value = (
-            "El sistema para informar errores se agregará después."
-        )
+        mensaje_estado.value = tr("report_later")
         page.update()
 
     async def boton_ocultar(e=None) -> None:
         if procesando:
-            mensaje_estado.value = "Esperá a que termine la respuesta."
+            mensaje_estado.value = tr("wait_response")
             page.update()
             return
 
@@ -548,6 +581,8 @@ async def main(page: ft.Page) -> None:
 
                         if comando == "activate":
                             await activar_popup()
+                        elif comando == "hide_now":
+                            await ocultar_inmediatamente()
                         elif comando == "quit":
                             await cerrar_totalmente()
                             return
@@ -581,7 +616,7 @@ async def main(page: ft.Page) -> None:
     )
 
     texto_boton_copiar = ft.Text(
-        "Copiar",
+        tr("copy"),
         color=COLOR_TEXTO,
         weight=ft.FontWeight.W_600,
     )
@@ -605,7 +640,7 @@ async def main(page: ft.Page) -> None:
                 weight=ft.FontWeight.BOLD,
             ),
             ft.Text(
-                "Powered by Google Gemini",
+                tr("powered_by"),
                 color=COLOR_SECUNDARIO,
                 size=12,
             ),
@@ -617,16 +652,18 @@ async def main(page: ft.Page) -> None:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    zona_respuesta = ft.Column(
+    # A scrollable control needs an explicit viewport in this frameless window.
+    zona_respuesta = ft.ListView(
         controls=[texto_respuesta],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
+        height=calcular_altura_respuesta(altura_actual),
+        build_controls_on_demand=False,
+        scroll=ft.ScrollMode.ALWAYS,
         scroll_interval=50,
         on_scroll=registrar_interaccion,
     )
 
     campo_pregunta = ft.TextField(
-        hint_text="Escribí otra pregunta…",
+        hint_text=tr("popup_hint"),
         expand=True,
         multiline=True,
         min_lines=1,
@@ -661,7 +698,7 @@ async def main(page: ft.Page) -> None:
 
     boton_enviar = ft.TextButton(
         content=ft.Text(
-            "Enviar",
+            "Send" if CONFIGURACION["system"].get("language") == "english" else "Enviar",
             color=COLOR_TEXTO,
             weight=ft.FontWeight.BOLD,
         ),
@@ -674,13 +711,13 @@ async def main(page: ft.Page) -> None:
     )
 
     boton_error = ft.TextButton(
-        content=ft.Text("Informar error", color=COLOR_SECUNDARIO),
+        content=ft.Text(tr("report_error"), color=COLOR_SECUNDARIO),
         on_click=informar_error,
     )
 
     boton_listo = ft.TextButton(
         content=ft.Text(
-            "Listo",
+            tr("done"),
             color=COLOR_TEXTO,
             weight=ft.FontWeight.BOLD,
         ),
@@ -726,6 +763,7 @@ async def main(page: ft.Page) -> None:
     )
 
     detector_interacciones = ft.GestureDetector(
+        expand=True,
         content=popup,
         on_tap_down=registrar_interaccion,
     )
@@ -739,8 +777,6 @@ async def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    # Keep the native window alive after startup. Hiding and showing the
-    # packaged frameless window itself caused the collapsed viewport bug.
     page.window.visible = True
     page.window.opacity = 0.0
     page.window.ignore_mouse_events = True
