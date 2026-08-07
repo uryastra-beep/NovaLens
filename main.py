@@ -19,6 +19,7 @@ from config_manager import (
     cargar_api_key,
     cargar_configuracion,
 )
+from localization import tr
 from rolling_audio import RollingAudioBuffer
 
 
@@ -170,9 +171,6 @@ def iniciar_popup() -> bool:
         return False
 
     proceso_popup = proceso
-
-    # Write the activation command only after the child process exists.
-    # This prevents an older popup process from consuming the command.
     enviar_comando("activate")
 
     threading.Thread(
@@ -207,6 +205,14 @@ def activar_popup() -> None:
 
         if iniciar_popup():
             ultimo_atajo_abrir = ahora
+
+
+def ocultar_popup_para_captura() -> None:
+    with bloqueo_estado:
+        activo = popup_esta_ejecutandose()
+
+    if activo:
+        enviar_comando("hide_now")
 
 
 def detener_popup_residente() -> None:
@@ -258,7 +264,7 @@ def iniciar_buffer_audio() -> bool:
             return True
         except Exception as error:
             error_buffer_audio = (
-                "No pude iniciar el micrófono predeterminado de Windows. "
+                f"{tr('mic_start_error')} "
                 f"{type(error).__name__}: {error}"
             )
             return False
@@ -301,6 +307,16 @@ def eliminar_todos_los_audios_temporales() -> None:
         archivos_audio_temporales.clear()
 
     for ruta in rutas:
+        try:
+            ruta.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def eliminar_audios_huerfanos() -> None:
+    """Remove Nova Lens WAV files left behind by a previous crash."""
+    carpeta_temp = Path(tempfile.gettempdir())
+    for ruta in carpeta_temp.glob("novalens_audio_*.wav"):
         try:
             ruta.unlink(missing_ok=True)
         except OSError:
@@ -383,7 +399,10 @@ def analizar_pantalla() -> None:
         abrir_configuracion()
         return
 
-    abrir_multimodal("screen")
+    # Remove Nova Lens' own text popup from the screenshot before starting the
+    # capture process. The popup child handles hide_now without an animation.
+    ocultar_popup_para_captura()
+    threading.Timer(0.15, abrir_multimodal, args=("screen",)).start()
 
 
 def responder_audio_anterior() -> None:
@@ -411,10 +430,7 @@ def responder_audio_anterior() -> None:
     if segundos_disponibles < 0.75:
         abrir_multimodal(
             "audio",
-            error_audio=(
-                "Nova Lens todavía no tiene suficiente audio en memoria. "
-                "Esperá un segundo y probá el atajo nuevamente."
-            ),
+            error_audio=tr("audio_not_ready"),
         )
         return
 
@@ -424,7 +440,7 @@ def responder_audio_anterior() -> None:
         abrir_multimodal(
             "audio",
             error_audio=(
-                "No pude preparar los últimos segundos de audio. "
+                f"{tr('audio_prepare_error')} "
                 f"{type(error).__name__}: {error}"
             ),
         )
@@ -433,7 +449,7 @@ def responder_audio_anterior() -> None:
     if not audio_wav:
         abrir_multimodal(
             "audio",
-            error_audio="No encontré audio reciente para analizar.",
+            error_audio=tr("audio_missing"),
         )
         return
 
@@ -443,7 +459,7 @@ def responder_audio_anterior() -> None:
         abrir_multimodal(
             "audio",
             error_audio=(
-                "No pude preparar el audio temporal. "
+                f"{tr('audio_temp_error')} "
                 f"{type(error).__name__}: {error}"
             ),
         )
@@ -577,6 +593,21 @@ def registrar_atajos() -> None:
 
         usados: set[str] = set()
 
+        # Fixed multimodal shortcuts always win. A custom shortcut that tries
+        # to reuse one of these falls back to its own default instead.
+        agregar_atajo_seguro(
+            ATAJO_PANTALLA,
+            ATAJO_PANTALLA,
+            analizar_pantalla,
+            usados,
+        )
+        agregar_atajo_seguro(
+            ATAJO_AUDIO,
+            ATAJO_AUDIO,
+            responder_audio_anterior,
+            usados,
+        )
+
         agregar_atajo_seguro(
             atajos["open"],
             predeterminados["open"],
@@ -602,20 +633,6 @@ def registrar_atajos() -> None:
             usados,
         )
 
-        # Multimodal Beta hotkeys. They will become configurable later.
-        agregar_atajo_seguro(
-            ATAJO_PANTALLA,
-            ATAJO_PANTALLA,
-            analizar_pantalla,
-            usados,
-        )
-        agregar_atajo_seguro(
-            ATAJO_AUDIO,
-            ATAJO_AUDIO,
-            responder_audio_anterior,
-            usados,
-        )
-
 
 def obtener_marca_config() -> int:
     try:
@@ -636,8 +653,8 @@ def vigilar_cambios_configuracion() -> None:
         ultima_marca = marca_actual
         registrar_atajos()
 
-        # popup.py reads the configuration when it starts.
-        # Closing it here makes the next launch use the new settings.
+        # popup.py reads the configuration when it starts. Closing it here
+        # makes the next launch use the new settings and language.
         detener_popup_residente()
 
 
@@ -685,14 +702,11 @@ def cerrar_novalens() -> None:
 def main() -> None:
     asegurar_instancia_unica()
     eliminar_archivos_control()
+    eliminar_audios_huerfanos()
     eliminar_todos_los_audios_temporales()
 
-    # Create config.json automatically on the first run.
     cargar_configuracion()
-
-    # Keep only the latest 10 seconds in RAM while Nova Lens is running.
     iniciar_buffer_audio()
-
     registrar_atajos()
 
     threading.Thread(
