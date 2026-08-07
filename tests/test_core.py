@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+import config_manager
 from backend import _extraer_texto_rest
-from config_manager import validar_configuracion
+from config_manager import cargar_api_key, validar_configuracion
 
 
 class ConfigValidationTests(unittest.TestCase):
@@ -40,12 +45,28 @@ class ConfigValidationTests(unittest.TestCase):
                 "appearance": {
                     "font_size": "nan",
                     "transparency": "inf",
-                }
+                },
+                "system": {"start_with_windows": float("nan")},
             }
         )
 
         self.assertEqual(config["appearance"]["font_size"], 16)
         self.assertEqual(config["appearance"]["transparency"], 60)
+        self.assertFalse(config["system"]["start_with_windows"])
+
+    def test_env_file_without_key_falls_back_to_process_environment(self) -> None:
+        previous_path = config_manager.ARCHIVO_ENV
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text("# intentionally empty\n", encoding="utf-8")
+            config_manager.ARCHIVO_ENV = env_path
+
+            try:
+                with patch.dict(os.environ, {"GEMINI_API_KEY": "AQ.test-fallback"}):
+                    self.assertEqual(cargar_api_key(), "AQ.test-fallback")
+            finally:
+                config_manager.ARCHIVO_ENV = previous_path
 
 
 class GeminiRestParsingTests(unittest.TestCase):
