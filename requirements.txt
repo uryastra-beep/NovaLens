@@ -1,6 +1,7 @@
-google-genai>=2.16.0,<3.0.0
-python-dotenv
+google-genai==2.16.0
+python-dotenv==1.2.2
 flet==0.86.5
-keyboard
-Pillow
-sounddevice
+keyboard==0.13.5
+Pillow==12.3.0
+sounddevice==0.5.5
+httpx==0.28.1
