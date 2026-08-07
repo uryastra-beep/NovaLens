@@ -8,9 +8,9 @@ $releaseZip = Join-Path $PSScriptRoot $releaseName
 $checksumFile = "$releaseZip.sha256"
 
 Write-Host "Stopping running Nova Lens processes..."
+# Never kill generic flet.exe or pythonw.exe processes: they may belong to
+# unrelated applications on the user's computer.
 Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 function Remove-DirectoryWithRetry {
@@ -34,7 +34,7 @@ function Remove-DirectoryWithRetry {
                 throw
             }
 
-            Write-Host "Waiting for Windows to release $Path..."
+            Write-Host "Waiting for Windows to release $Path ($attempt/$Attempts)..."
             Start-Sleep -Seconds 2
         }
     }
@@ -72,10 +72,8 @@ function Compress-ReleaseWithRetry {
                 throw
             }
 
-            Write-Host "Windows still has a build file open. Retrying ZIP creation ($attempt/$Attempts)..."
+            Write-Host "A packaged file is still locked. Retrying ZIP creation ($attempt/$Attempts)..."
             Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
         }
     }
@@ -88,11 +86,11 @@ Remove-Item $releaseZip -Force -ErrorAction SilentlyContinue
 Remove-Item $checksumFile -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $PSScriptRoot "NovaLens-v1.0.1-beta.1-Windows-x64.zip") -Force -ErrorAction SilentlyContinue
 
-Write-Host "Installing and upgrading runtime dependencies..."
-python -m pip install --upgrade -r requirements.txt
+Write-Host "Installing pinned runtime dependencies..."
+python -m pip install -r requirements.txt
 
-Write-Host "Installing and upgrading build dependencies..."
-python -m pip install --upgrade -r requirements-build.txt
+Write-Host "Installing pinned build dependencies..."
+python -m pip install -r requirements-build.txt
 
 $packArguments = @(
     "pack",
@@ -106,7 +104,7 @@ $packArguments = @(
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
-    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "native_clickthrough",
+    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "native_clickthrough", "localization",
     "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;."
 )
 
@@ -135,15 +133,14 @@ if (-not (Test-Path $internalFolder)) {
     throw "The build finished, but the required _internal folder was not found."
 }
 
-# Never ship user secrets, local settings, or debug files.
+# Never ship user secrets, local settings, temporary credentials, or debug files.
 Remove-Item (Join-Path $distFolder ".env") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $distFolder ".env.tmp") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "config.json") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "config.tmp.json") -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $distFolder "debug.log") -Force -ErrorAction SilentlyContinue
 
 Write-Host "Waiting for the build tools to release packaged files..."
-Get-Process flet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 5
 
 Write-Host "Creating the official Windows release ZIP..."
