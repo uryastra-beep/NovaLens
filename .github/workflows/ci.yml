@@ -34,7 +34,7 @@ jobs:
 
       - name: Compile Python sources
         shell: pwsh
-        run: python -m compileall -q backend.py config.py config_manager.py launcher.py localization.py main.py multimodal.py native_clickthrough.py popup.py popup_exe.py rolling_audio.py
+        run: python -m compileall -q audio_indicator.py backend.py config.py config_manager.py launcher.py localization.py main.py multimodal.py native_clickthrough.py popup.py popup_exe.py rolling_audio.py screen_selector.py
 
       - name: Run regression tests
         shell: pwsh

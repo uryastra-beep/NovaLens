@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import ctypes
-import io
 import math
 import os
 import re
@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 import flet as ft
-from PIL import ImageGrab
 
 from backend import analizar_captura_pantalla, transcribir_y_responder_audio
 from config_manager import (
@@ -19,6 +18,7 @@ from config_manager import (
     color_con_transparencia,
 )
 from localization import tr
+from screen_selector import seleccionar_region_pantalla_jpeg
 
 
 if len(sys.argv) < 2 or sys.argv[1].lower() not in {"screen", "audio"}:
@@ -27,12 +27,18 @@ if len(sys.argv) < 2 or sys.argv[1].lower() not in {"screen", "audio"}:
 MODO = sys.argv[1].lower()
 ARCHIVO_AUDIO: Path | None = None
 ERROR_AUDIO = ""
+AUDIO_DURATION = 10
 
 if MODO == "audio":
-    if len(sys.argv) >= 4 and sys.argv[2] == "--error":
-        ERROR_AUDIO = sys.argv[3]
-    elif len(sys.argv) >= 3:
-        ARCHIVO_AUDIO = Path(sys.argv[2])
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("audio_file", nargs="?")
+    parser.add_argument("--error", default="")
+    parser.add_argument("--duration", type=int, default=10)
+    argumentos = parser.parse_args(sys.argv[2:])
+    ERROR_AUDIO = argumentos.error
+    AUDIO_DURATION = max(3, min(30, argumentos.duration))
+    if argumentos.audio_file:
+        ARCHIVO_AUDIO = Path(argumentos.audio_file)
 
 CONFIGURACION = cargar_configuracion()
 APARIENCIA = CONFIGURACION["appearance"]
@@ -138,22 +144,6 @@ def calcular_altura(texto: str, ancho: int) -> int:
 
     altura = 118 + lineas * (TAMANO_FUENTE + 7)
     return max(ALTURA_MINIMA, min(altura, ALTURA_MAXIMA))
-
-
-def capturar_pantalla_jpeg() -> bytes:
-    imagen = ImageGrab.grab(all_screens=True)
-
-    if imagen.mode != "RGB":
-        imagen = imagen.convert("RGB")
-
-    with io.BytesIO() as buffer:
-        imagen.save(
-            buffer,
-            format="JPEG",
-            quality=82,
-            optimize=True,
-        )
-        return buffer.getvalue()
 
 
 def leer_audio_temporal() -> bytes:
@@ -401,7 +391,17 @@ async def main(page: ft.Page) -> None:
 
     try:
         if MODO == "screen":
-            captura = await asyncio.to_thread(capturar_pantalla_jpeg)
+            captura = await asyncio.to_thread(
+                seleccionar_region_pantalla_jpeg,
+                tr("select_screen_region"),
+                tr("select_screen_cancel"),
+            )
+            if captura is None:
+                try:
+                    await page.window.destroy()
+                except Exception:
+                    pass
+                os._exit(0)
             texto_respuesta.value = tr("detecting_screen")
             mensaje_estado.value = tr("analyzing_screen")
             await mostrar_ventana()
@@ -411,7 +411,9 @@ async def main(page: ft.Page) -> None:
             )
 
         else:
-            texto_respuesta.value = tr("analyzing_audio")
+            texto_respuesta.value = tr("analyzing_audio").format(
+                seconds=AUDIO_DURATION
+            )
             mensaje_estado.value = tr("processing_audio")
             await mostrar_ventana()
 

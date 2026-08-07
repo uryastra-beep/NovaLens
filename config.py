@@ -65,13 +65,22 @@ TRADUCCIONES = {
         "behavior_sub": "Visible time and behavior when focus is lost.",
         "visible_time": "Visible time",
         "click_through": "Allow click-through when focus is lost",
+        "audio": "Recent audio",
+        "audio_sub": "Control the rolling microphone buffer used by Nova Lens.",
+        "audio_enabled": "Keep recent microphone audio available",
+        "audio_duration": "Audio duration",
+        "audio_indicator": "Show the microphone activity indicator",
+        "audio_privacy": "Audio stays only in memory until you use P + Shift + A. Disabling this option stops the microphone immediately.",
+        "screen_capture": "Screen region",
+        "screen_capture_sub": "Choose exactly which part of the screen Gemini receives.",
+        "screen_region_help": "Press P + Shift + S, drag a rectangle, and release to analyze only that region. Press Esc or right-click to cancel.",
         "hotkeys": "Keyboard shortcuts",
         "hotkeys_sub": "Use key+key format. Changes apply after saving.",
         "open": "Open or reactivate",
         "settings": "Open Settings",
         "close": "Close Nova Lens",
         "close_alt": "Alternative close shortcut",
-        "fixed_hotkeys": "Screenshot (P + Shift + S) and audio (P + Shift + A) shortcuts are fixed in v1.0.1.",
+        "fixed_hotkeys": "Screen region (P + Shift + S) and recent audio (P + Shift + A) shortcuts are fixed in v1.1.0.",
         "system": "System",
         "system_sub": "Control how Nova Lens starts in Windows.",
         "startup": "Start Nova Lens automatically with Windows",
@@ -123,13 +132,22 @@ TRADUCCIONES = {
         "behavior_sub": "Tiempo visible y comportamiento al perder el foco.",
         "visible_time": "Tiempo visible",
         "click_through": "Permitir click-through cuando pierde el foco",
+        "audio": "Audio reciente",
+        "audio_sub": "Controlá el búfer continuo del micrófono que usa Nova Lens.",
+        "audio_enabled": "Mantener disponible el audio reciente del micrófono",
+        "audio_duration": "Duración del audio",
+        "audio_indicator": "Mostrar el indicador de actividad del micrófono",
+        "audio_privacy": "El audio permanece solo en memoria hasta que usás P + Shift + A. Desactivar esta opción detiene el micrófono inmediatamente.",
+        "screen_capture": "Región de pantalla",
+        "screen_capture_sub": "Elegí exactamente qué parte de la pantalla recibe Gemini.",
+        "screen_region_help": "Presioná P + Shift + S, arrastrá un rectángulo y soltá para analizar solo esa región. Presioná Esc o hacé clic derecho para cancelar.",
         "hotkeys": "Atajos de teclado",
         "hotkeys_sub": "Usá el formato tecla+tecla. Los cambios se aplican al guardar.",
         "open": "Abrir o reactivar",
         "settings": "Abrir configuración",
         "close": "Cerrar Nova Lens",
         "close_alt": "Atajo alternativo para cerrar",
-        "fixed_hotkeys": "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) son fijos en v1.0.1.",
+        "fixed_hotkeys": "Los atajos de región de pantalla (P + Shift + S) y audio reciente (P + Shift + A) son fijos en v1.1.0.",
         "system": "Sistema",
         "system_sub": "Controlá cómo se inicia Nova Lens en Windows.",
         "startup": "Iniciar Nova Lens automáticamente con Windows",
@@ -185,6 +203,7 @@ async def main(page: ft.Page) -> None:
 
     apariencia = config["appearance"]
     comportamiento = config["behavior"]
+    audio = config["audio"]
     atajos = config["hotkeys"]
     sistema = config["system"]
 
@@ -235,6 +254,8 @@ async def main(page: ft.Page) -> None:
     radio = ft.Slider(min=0, max=36, divisions=18, value=apariencia["border_radius"], active_color=ACENTO, expand=True)
     margen = ft.Slider(min=0, max=32, divisions=16, value=apariencia["margin"], active_color=ACENTO, expand=True)
     tiempo = ft.Slider(min=3, max=60, divisions=57, value=comportamiento["visible_seconds"], active_color=ACENTO, expand=True)
+    duracion_audio = ft.Slider(min=3, max=30, divisions=27, value=audio["duration_seconds"], active_color=ACENTO, expand=True)
+    etiquetas_sliders: dict[int, tuple[ft.Text, str]] = {}
 
     posicion = ft.Dropdown(
         label=t["position"],
@@ -254,6 +275,18 @@ async def main(page: ft.Page) -> None:
     click_through = ft.Switch(
         label=t["click_through"],
         value=comportamiento["click_through_on_blur"],
+        active_color=ACENTO,
+        label_text_style=ft.TextStyle(color=TEXTO),
+    )
+    audio_habilitado = ft.Switch(
+        label=t["audio_enabled"],
+        value=audio["enabled"],
+        active_color=ACENTO,
+        label_text_style=ft.TextStyle(color=TEXTO),
+    )
+    indicador_audio = ft.Switch(
+        label=t["audio_indicator"],
+        value=audio["show_indicator"],
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
@@ -399,6 +432,11 @@ async def main(page: ft.Page) -> None:
                 "visible_seconds": round(tiempo.value or 10),
                 "click_through_on_blur": bool(click_through.value),
             },
+            "audio": {
+                "enabled": bool(audio_habilitado.value),
+                "duration_seconds": round(duracion_audio.value or 10),
+                "show_indicator": bool(indicador_audio.value),
+            },
             "hotkeys": {
                 "open": campos_atajos[t["open"]],
                 "settings": campos_atajos[t["settings"]],
@@ -414,6 +452,7 @@ async def main(page: ft.Page) -> None:
     def aplicar_config_a_controles(datos: dict[str, Any]) -> None:
         ap = datos["appearance"]
         beh = datos["behavior"]
+        audiocfg = datos["audio"]
         hk = datos["hotkeys"]
         syscfg = datos["system"]
 
@@ -428,12 +467,29 @@ async def main(page: ft.Page) -> None:
         posicion.value = ap["position"]
         tiempo.value = beh["visible_seconds"]
         click_through.value = beh["click_through_on_blur"]
+        audio_habilitado.value = audiocfg["enabled"]
+        duracion_audio.value = audiocfg["duration_seconds"]
+        indicador_audio.value = audiocfg["show_indicator"]
         atajo_abrir.value = hk["open"]
         atajo_config.value = hk["settings"]
         atajo_cerrar.value = hk["close"]
         atajo_cerrar_alt.value = hk["close_alt"]
         inicio_windows.value = syscfg["start_with_windows"]
         idioma.value = syscfg["language"]
+        for control in (
+            transparencia,
+            fuente,
+            radio,
+            margen,
+            tiempo,
+            duracion_audio,
+        ):
+            datos_valor = etiquetas_sliders.get(id(control))
+            if datos_valor is not None:
+                etiqueta_valor, sufijo = datos_valor
+                etiqueta_valor.value = (
+                    f"{round(control.value or 0)} {sufijo}"
+                )
         actualizar_preview()
 
     def guardar(e: Any = None) -> None:
@@ -475,6 +531,7 @@ async def main(page: ft.Page) -> None:
             actualizar_preview()
 
         control.on_change = actualizar
+        etiquetas_sliders[id(control)] = (valor, sufijo)
         return ft.Row(
             controls=[ft.Text(etiqueta, color=TEXTO, width=150), control, valor]
         )
@@ -491,7 +548,7 @@ async def main(page: ft.Page) -> None:
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Text("1.0.1", color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
+                    ft.Text("1.1.0", color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
                 ]
             ),
             estado,
@@ -526,6 +583,21 @@ async def main(page: ft.Page) -> None:
                 t["behavior"],
                 t["behavior_sub"],
                 [fila_slider(t["visible_time"], tiempo, "s"), click_through],
+            ),
+            tarjeta(
+                t["audio"],
+                t["audio_sub"],
+                [
+                    audio_habilitado,
+                    fila_slider(t["audio_duration"], duracion_audio, "s"),
+                    indicador_audio,
+                    ft.Text(t["audio_privacy"], size=12, color=TEXTO_SECUNDARIO),
+                ],
+            ),
+            tarjeta(
+                t["screen_capture"],
+                t["screen_capture_sub"],
+                [ft.Text(t["screen_region_help"], size=12, color=TEXTO_SECUNDARIO)],
             ),
             tarjeta(
                 t["hotkeys"],

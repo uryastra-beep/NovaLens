@@ -14,6 +14,7 @@ CHILD_MODULES = {
     "popup.py": "popup_exe",
     "config.py": "config",
     "multimodal.py": "multimodal",
+    "audio_indicator.py": "audio_indicator",
 }
 
 

@@ -39,6 +39,26 @@ class RollingAudioBuffer:
             * self.sample_width
         )
 
+    def set_duration(self, duration_seconds: int) -> None:
+        """Resize the rolling window and immediately discard older PCM."""
+        duration = max(1, int(duration_seconds))
+
+        with self._lock:
+            self.duration_seconds = duration
+            self._update_max_bytes()
+
+            while self._total_bytes > self._max_bytes and self._chunks:
+                excess = self._total_bytes - self._max_bytes
+                oldest = self._chunks[0]
+
+                if excess >= len(oldest):
+                    self._chunks.popleft()
+                    self._total_bytes -= len(oldest)
+                    continue
+
+                self._chunks[0] = oldest[excess:]
+                self._total_bytes -= excess
+
     @property
     def last_error(self) -> str:
         return self._last_error

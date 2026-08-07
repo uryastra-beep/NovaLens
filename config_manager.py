@@ -33,6 +33,11 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
         "visible_seconds": 10,
         "click_through_on_blur": True,
     },
+    "audio": {
+        "enabled": True,
+        "duration_seconds": 10,
+        "show_indicator": True,
+    },
     "hotkeys": {
         "open": "p+enter",
         "settings": "p+shift+enter",
@@ -138,6 +143,15 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
     )
     comportamiento["click_through_on_blur"] = normalizar_bool(
         comportamiento.get("click_through_on_blur"), True
+    )
+
+    audio = _seccion_dict(config, "audio")
+    audio["enabled"] = normalizar_bool(audio.get("enabled"), True)
+    audio["duration_seconds"] = limitar(
+        audio.get("duration_seconds"), 3, 30, 10
+    )
+    audio["show_indicator"] = normalizar_bool(
+        audio.get("show_indicator"), True
     )
 
     atajos = _seccion_dict(config, "hotkeys")

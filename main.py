@@ -31,6 +31,7 @@ CARPETA_PROYECTO = Path(__file__).resolve().parent
 ARCHIVO_POPUP = CARPETA_PROYECTO / "popup.py"
 ARCHIVO_CONFIG_APP = CARPETA_PROYECTO / "config.py"
 ARCHIVO_MULTIMODAL = CARPETA_PROYECTO / "multimodal.py"
+ARCHIVO_INDICADOR_AUDIO = CARPETA_PROYECTO / "audio_indicator.py"
 
 ARCHIVO_CONTROL = (
     Path(tempfile.gettempdir())
@@ -41,7 +42,6 @@ ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 ATAJO_PANTALLA = "p+shift+s"
 ATAJO_AUDIO = "p+shift+a"
 
-DURACION_BUFFER_AUDIO = 10
 FRECUENCIA_AUDIO = 16_000
 
 
@@ -51,6 +51,7 @@ FRECUENCIA_AUDIO = 16_000
 
 proceso_popup: subprocess.Popen | None = None
 proceso_configuracion: subprocess.Popen | None = None
+proceso_indicador_audio: subprocess.Popen | None = None
 procesos_multimodales: dict[str, subprocess.Popen] = {}
 
 bloqueo_estado = threading.Lock()
@@ -67,11 +68,14 @@ identificadores_atajos: list[object] = []
 archivos_audio_temporales: set[Path] = set()
 
 buffer_audio = RollingAudioBuffer(
-    duration_seconds=DURACION_BUFFER_AUDIO,
+    duration_seconds=10,
     sample_rate=FRECUENCIA_AUDIO,
     channels=1,
 )
 error_buffer_audio = ""
+audio_habilitado = True
+duracion_buffer_audio = 10
+mostrar_indicador_audio = True
 
 
 # ══════════════════════════════════════════════
@@ -245,6 +249,104 @@ def detener_popup_residente() -> None:
 
 
 # ══════════════════════════════════════════════
+# MICROPHONE ACTIVITY INDICATOR
+# ══════════════════════════════════════════════
+
+def vigilar_indicador_audio(proceso: subprocess.Popen) -> None:
+    global proceso_indicador_audio
+
+    proceso.wait()
+
+    with bloqueo_estado:
+        if proceso_indicador_audio is proceso:
+            proceso_indicador_audio = None
+
+
+def iniciar_indicador_audio() -> bool:
+    global proceso_indicador_audio
+
+    if (
+        novalens_cerrando.is_set()
+        or not ARCHIVO_INDICADOR_AUDIO.exists()
+    ):
+        return False
+
+    with bloqueo_estado:
+        proceso_actual = proceso_indicador_audio
+        pantalla = procesos_multimodales.get("screen")
+
+        if proceso_actual is not None and proceso_actual.poll() is None:
+            return True
+
+        if pantalla is not None and pantalla.poll() is None:
+            return False
+
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        try:
+            proceso = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ARCHIVO_INDICADOR_AUDIO),
+                    str(duracion_buffer_audio),
+                ],
+                cwd=str(CARPETA_PROYECTO),
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return False
+
+        proceso_indicador_audio = proceso
+
+    threading.Thread(
+        target=vigilar_indicador_audio,
+        args=(proceso,),
+        daemon=True,
+    ).start()
+    return True
+
+
+def detener_indicador_audio() -> None:
+    global proceso_indicador_audio
+
+    with bloqueo_estado:
+        proceso = proceso_indicador_audio
+        proceso_indicador_audio = None
+
+    if proceso is None or proceso.poll() is not None:
+        return
+
+    try:
+        proceso.terminate()
+        proceso.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        proceso.kill()
+    except Exception:
+        pass
+
+
+def sincronizar_indicador_audio() -> None:
+    with bloqueo_estado:
+        pantalla = procesos_multimodales.get("screen")
+        seleccionando_pantalla = (
+            pantalla is not None and pantalla.poll() is None
+        )
+
+    debe_mostrarse = (
+        audio_habilitado
+        and mostrar_indicador_audio
+        and buffer_audio.is_running
+        and not seleccionando_pantalla
+        and not novalens_cerrando.is_set()
+    )
+
+    if debe_mostrarse:
+        iniciar_indicador_audio()
+    else:
+        detener_indicador_audio()
+
+
+# ══════════════════════════════════════════════
 # ROLLING MICROPHONE BUFFER
 # ══════════════════════════════════════════════
 
@@ -254,25 +356,74 @@ def iniciar_buffer_audio() -> bool:
     if novalens_cerrando.is_set():
         return False
 
+    if not audio_habilitado:
+        error_buffer_audio = tr("audio_disabled")
+        sincronizar_indicador_audio()
+        return False
+
     with bloqueo_audio:
         if buffer_audio.is_running:
+            sincronizar_indicador_audio()
             return True
 
         try:
             buffer_audio.start()
             error_buffer_audio = ""
+            sincronizar_indicador_audio()
             return True
         except Exception as error:
             error_buffer_audio = (
                 f"{tr('mic_start_error')} "
                 f"{type(error).__name__}: {error}"
             )
+            sincronizar_indicador_audio()
             return False
 
 
 def detener_buffer_audio() -> None:
     with bloqueo_audio:
         buffer_audio.stop()
+    sincronizar_indicador_audio()
+
+
+def aplicar_configuracion_audio(
+    config: dict | None = None,
+) -> None:
+    global audio_habilitado
+    global duracion_buffer_audio
+    global mostrar_indicador_audio
+    global error_buffer_audio
+
+    configuracion = config or cargar_configuracion()
+    audio = configuracion["audio"]
+    nueva_habilitacion = bool(audio["enabled"])
+    nueva_duracion = int(audio["duration_seconds"])
+    nuevo_indicador = bool(audio["show_indicator"])
+
+    # The indicator also uses appearance and popup-position settings, so any
+    # saved configuration change must recreate it with the latest values.
+    detener_indicador_audio()
+    audio_habilitado = nueva_habilitacion
+    duracion_buffer_audio = nueva_duracion
+    mostrar_indicador_audio = nuevo_indicador
+
+    with bloqueo_audio:
+        buffer_audio.set_duration(duracion_buffer_audio)
+
+        if not audio_habilitado:
+            buffer_audio.stop()
+            error_buffer_audio = tr("audio_disabled")
+        elif not buffer_audio.is_running:
+            try:
+                buffer_audio.start()
+                error_buffer_audio = ""
+            except Exception as error:
+                error_buffer_audio = (
+                    f"{tr('mic_start_error')} "
+                    f"{type(error).__name__}: {error}"
+                )
+
+    sincronizar_indicador_audio()
 
 
 def crear_archivo_audio_temporal(audio_wav: bytes) -> Path:
@@ -340,26 +491,29 @@ def vigilar_multimodal(
         if procesos_multimodales.get(modo) is proceso:
             procesos_multimodales.pop(modo, None)
 
+    if modo == "screen":
+        sincronizar_indicador_audio()
+
 
 def abrir_multimodal(
     modo: str,
     archivo_audio: Path | None = None,
     error_audio: str = "",
-) -> None:
+) -> bool:
     if (
         novalens_cerrando.is_set()
         or modo not in {"screen", "audio"}
         or not ARCHIVO_MULTIMODAL.exists()
     ):
         eliminar_archivo_audio_temporal(archivo_audio)
-        return
+        return False
 
     with bloqueo_estado:
         proceso_actual = procesos_multimodales.get(modo)
 
         if proceso_actual is not None and proceso_actual.poll() is None:
             eliminar_archivo_audio_temporal(archivo_audio)
-            return
+            return False
 
         argumentos = [
             sys.executable,
@@ -372,6 +526,9 @@ def abrir_multimodal(
                 argumentos.extend(["--error", error_audio])
             elif archivo_audio is not None:
                 argumentos.append(str(archivo_audio))
+            argumentos.extend(
+                ["--duration", str(duracion_buffer_audio)]
+            )
 
         creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -383,7 +540,7 @@ def abrir_multimodal(
             )
         except Exception:
             eliminar_archivo_audio_temporal(archivo_audio)
-            return
+            return False
 
         procesos_multimodales[modo] = proceso
 
@@ -392,6 +549,12 @@ def abrir_multimodal(
         args=(modo, proceso, archivo_audio),
         daemon=True,
     ).start()
+    return True
+
+
+def abrir_selector_pantalla() -> None:
+    if not abrir_multimodal("screen"):
+        sincronizar_indicador_audio()
 
 
 def analizar_pantalla() -> None:
@@ -402,7 +565,8 @@ def analizar_pantalla() -> None:
     # Remove Nova Lens' own text popup from the screenshot before starting the
     # capture process. The popup child handles hide_now without an animation.
     ocultar_popup_para_captura()
-    threading.Timer(0.15, abrir_multimodal, args=("screen",)).start()
+    detener_indicador_audio()
+    threading.Timer(0.15, abrir_selector_pantalla).start()
 
 
 def responder_audio_anterior() -> None:
@@ -583,8 +747,8 @@ def agregar_atajo_seguro(
         return
 
 
-def registrar_atajos() -> None:
-    config = cargar_configuracion()
+def registrar_atajos(config: dict | None = None) -> None:
+    config = config or cargar_configuracion()
     atajos = config["hotkeys"]
     predeterminados = CONFIGURACION_PREDETERMINADA["hotkeys"]
 
@@ -651,7 +815,9 @@ def vigilar_cambios_configuracion() -> None:
             continue
 
         ultima_marca = marca_actual
-        registrar_atajos()
+        config = cargar_configuracion()
+        registrar_atajos(config)
+        aplicar_configuracion_audio(config)
 
         # popup.py reads the configuration when it starts. Closing it here
         # makes the next launch use the new settings and language.
@@ -672,6 +838,7 @@ def cerrar_novalens() -> None:
 
     detener_popup_residente()
     detener_procesos_multimodales()
+    detener_indicador_audio()
     detener_buffer_audio()
 
     with bloqueo_estado:
@@ -705,9 +872,9 @@ def main() -> None:
     eliminar_audios_huerfanos()
     eliminar_todos_los_audios_temporales()
 
-    cargar_configuracion()
-    iniciar_buffer_audio()
-    registrar_atajos()
+    config = cargar_configuracion()
+    aplicar_configuracion_audio(config)
+    registrar_atajos(config)
 
     threading.Thread(
         target=vigilar_cambios_configuracion,
