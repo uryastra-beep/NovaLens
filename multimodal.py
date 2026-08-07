@@ -7,6 +7,7 @@ import math
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import flet as ft
@@ -17,6 +18,7 @@ from config_manager import (
     cargar_configuracion,
     color_con_transparencia,
 )
+from localization import tr
 
 
 if len(sys.argv) < 2 or sys.argv[1].lower() not in {"screen", "audio"}:
@@ -198,9 +200,14 @@ async def main(page: ft.Page) -> None:
 
     respuesta_actual = ""
     cerrando = False
+    ultima_interaccion = time.monotonic()
+
+    def registrar_interaccion(e=None) -> None:
+        nonlocal ultima_interaccion
+        ultima_interaccion = time.monotonic()
 
     texto_respuesta = ft.Text(
-        "Preparing…",
+        tr("preparing"),
         color=COLOR_TEXTO,
         size=TAMANO_FUENTE,
         selectable=True,
@@ -218,7 +225,7 @@ async def main(page: ft.Page) -> None:
         visible=True,
     )
     texto_copiar = ft.Text(
-        "Copy",
+        tr("copy"),
         color=COLOR_TEXTO,
         weight=ft.FontWeight.W_600,
     )
@@ -242,12 +249,13 @@ async def main(page: ft.Page) -> None:
         os._exit(0)
 
     async def copiar(e=None) -> None:
+        registrar_interaccion()
         try:
             await ft.Clipboard().set(respuesta_actual)
-            texto_copiar.value = "Copied"
-            mensaje_estado.value = "Response copied."
+            texto_copiar.value = tr("copied")
+            mensaje_estado.value = tr("copy_done")
         except Exception:
-            mensaje_estado.value = "I could not copy the response."
+            mensaje_estado.value = tr("copy_failed")
 
         page.update()
 
@@ -274,18 +282,19 @@ async def main(page: ft.Page) -> None:
         popup.opacity = 1
         popup.offset = ft.Offset(0, 0)
         popup.update()
+        registrar_interaccion()
 
     async def actualizar_resultado(texto: str) -> None:
         nonlocal respuesta_actual
 
         respuesta_actual = (
             (texto or "").strip()
-            or "Gemini did not return any text."
+            or tr("no_text")
         )
         limpio = limpiar_markdown_basico(respuesta_actual)
         texto_respuesta.value = limpio
         indicador.visible = False
-        mensaje_estado.value = "Response ready."
+        mensaje_estado.value = tr("response_ready")
 
         nueva_altura = calcular_altura(limpio, ancho_popup)
         page.window.height = nueva_altura
@@ -295,7 +304,16 @@ async def main(page: ft.Page) -> None:
                 arriba + alto_area - nueva_altura - MARGEN_PANTALLA
             )
 
+        registrar_interaccion()
         page.update()
+
+    async def esperar_inactividad() -> None:
+        while not cerrando:
+            restante = TIEMPO_VISIBLE - (time.monotonic() - ultima_interaccion)
+            if restante <= 0:
+                await cerrar()
+                return
+            await asyncio.sleep(min(0.5, restante))
 
     encabezado = ft.Row(
         controls=[
@@ -306,7 +324,7 @@ async def main(page: ft.Page) -> None:
                 weight=ft.FontWeight.BOLD,
             ),
             ft.Text(
-                "Screen & Audio",
+                tr("screen_audio"),
                 color=COLOR_SECUNDARIO,
                 size=12,
             ),
@@ -322,6 +340,7 @@ async def main(page: ft.Page) -> None:
         controls=[texto_respuesta],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
+        on_scroll=registrar_interaccion,
     )
 
     barra_inferior = ft.Row(
@@ -330,7 +349,7 @@ async def main(page: ft.Page) -> None:
             ft.TextButton(content=texto_copiar, on_click=copiar),
             ft.TextButton(
                 content=ft.Text(
-                    "Done",
+                    tr("done"),
                     color=COLOR_TEXTO,
                     weight=ft.FontWeight.BOLD,
                 ),
@@ -372,17 +391,19 @@ async def main(page: ft.Page) -> None:
         ),
     )
 
-    page.add(popup)
+    page.add(
+        ft.GestureDetector(
+            content=popup,
+            on_tap_down=registrar_interaccion,
+        )
+    )
     page.update()
 
     try:
         if MODO == "screen":
-            # Capture before showing the popup so Nova Lens is not included.
             captura = await asyncio.to_thread(capturar_pantalla_jpeg)
-            texto_respuesta.value = (
-                "Detecting the question visible on the screen…"
-            )
-            mensaje_estado.value = "Analyzing screen…"
+            texto_respuesta.value = tr("detecting_screen")
+            mensaje_estado.value = tr("analyzing_screen")
             await mostrar_ventana()
             respuesta = await asyncio.to_thread(
                 analizar_captura_pantalla,
@@ -390,10 +411,8 @@ async def main(page: ft.Page) -> None:
             )
 
         else:
-            texto_respuesta.value = (
-                "Analyzing the previous 10 seconds of microphone audio…"
-            )
-            mensaje_estado.value = "Processing recent audio…"
+            texto_respuesta.value = tr("analyzing_audio")
+            mensaje_estado.value = tr("processing_audio")
             await mostrar_ventana()
 
             if ERROR_AUDIO:
@@ -402,9 +421,7 @@ async def main(page: ft.Page) -> None:
                 audio = await asyncio.to_thread(leer_audio_temporal)
 
                 if not audio:
-                    respuesta = (
-                        "I could not find recent microphone audio to analyze."
-                    )
+                    respuesta = tr("audio_missing")
                 else:
                     respuesta = await asyncio.to_thread(
                         transcribir_y_responder_audio,
@@ -412,16 +429,12 @@ async def main(page: ft.Page) -> None:
                     )
 
         await actualizar_resultado(respuesta)
-        await asyncio.sleep(TIEMPO_VISIBLE)
-        await cerrar()
+        await esperar_inactividad()
 
     except Exception as error:
         await mostrar_ventana()
-        await actualizar_resultado(
-            "I could not complete the request.\n\n"
-            f"Error type: {type(error).__name__}\n"
-            f"Details: {error}"
-        )
+        await actualizar_resultado(str(error))
+        await esperar_inactividad()
 
 
 if __name__ == "__main__":
