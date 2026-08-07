@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import re
 import sys
@@ -49,10 +50,27 @@ PATRON_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 def limitar(valor: Any, minimo: int, maximo: int, predeterminado: int) -> int:
     try:
-        numero = int(round(float(valor)))
-    except (TypeError, ValueError):
+        numero_float = float(valor)
+        if not math.isfinite(numero_float):
+            return predeterminado
+        numero = int(round(numero_float))
+    except (TypeError, ValueError, OverflowError):
         return predeterminado
     return max(minimo, min(numero, maximo))
+
+
+def normalizar_bool(valor: Any, predeterminado: bool) -> bool:
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        return bool(valor)
+    if isinstance(valor, str):
+        texto = valor.strip().lower()
+        if texto in {"true", "1", "yes", "on"}:
+            return True
+        if texto in {"false", "0", "no", "off"}:
+            return False
+    return predeterminado
 
 
 def es_color_hex(valor: Any) -> bool:
@@ -68,11 +86,24 @@ def normalizar_color(valor: Any, predeterminado: str) -> str:
 def mezclar_diccionarios(base: dict[str, Any], nuevos: dict[str, Any]) -> dict[str, Any]:
     resultado = copy.deepcopy(base)
     for clave, valor in nuevos.items():
-        if clave in resultado and isinstance(resultado[clave], dict) and isinstance(valor, dict):
-            resultado[clave] = mezclar_diccionarios(resultado[clave], valor)
-        else:
-            resultado[clave] = valor
+        # Known object sections must remain dictionaries. A syntactically valid
+        # but structurally corrupted config file should never crash startup.
+        if clave in resultado and isinstance(resultado[clave], dict):
+            if isinstance(valor, dict):
+                resultado[clave] = mezclar_diccionarios(resultado[clave], valor)
+            continue
+        resultado[clave] = valor
     return resultado
+
+
+def _seccion_dict(config: dict[str, Any], nombre: str) -> dict[str, Any]:
+    seccion = config.get(nombre)
+    if isinstance(seccion, dict):
+        return seccion
+    predeterminada = CONFIGURACION_PREDETERMINADA[nombre]
+    reemplazo = copy.deepcopy(predeterminada)
+    config[nombre] = reemplazo
+    return reemplazo
 
 
 def validar_configuracion(datos: Any) -> dict[str, Any]:
@@ -80,7 +111,7 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
         datos = {}
 
     config = mezclar_diccionarios(CONFIGURACION_PREDETERMINADA, datos)
-    apariencia = config["appearance"]
+    apariencia = _seccion_dict(config, "appearance")
     apariencia_predeterminada = CONFIGURACION_PREDETERMINADA["appearance"]
 
     for clave in ("primary_color", "text_color", "secondary_color", "border_color"):
@@ -99,23 +130,25 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
         else "top"
     )
 
-    comportamiento = config["behavior"]
+    comportamiento = _seccion_dict(config, "behavior")
     comportamiento["visible_seconds"] = limitar(
         comportamiento.get("visible_seconds"), 3, 60, 10
     )
-    comportamiento["click_through_on_blur"] = bool(
-        comportamiento.get("click_through_on_blur", True)
+    comportamiento["click_through_on_blur"] = normalizar_bool(
+        comportamiento.get("click_through_on_blur"), True
     )
 
-    atajos = config["hotkeys"]
+    atajos = _seccion_dict(config, "hotkeys")
     for clave, predeterminado in CONFIGURACION_PREDETERMINADA["hotkeys"].items():
         valor = atajos.get(clave)
         if not isinstance(valor, str) or not valor.strip():
             valor = predeterminado
         atajos[clave] = valor.strip().lower()
 
-    sistema = config["system"]
-    sistema["start_with_windows"] = bool(sistema.get("start_with_windows", False))
+    sistema = _seccion_dict(config, "system")
+    sistema["start_with_windows"] = normalizar_bool(
+        sistema.get("start_with_windows"), False
+    )
     idioma = str(sistema.get("language", "english")).strip().lower()
     sistema["language"] = idioma if idioma in {"english", "spanish"} else "english"
 
@@ -185,13 +218,25 @@ def guardar_api_key(valor: str) -> str:
 
 def color_con_opacidad(color_hex: str, opacidad_porcentaje: int | float) -> str:
     color = normalizar_color(color_hex, "#000000")
-    opacidad = max(0, min(float(opacidad_porcentaje), 100))
+    try:
+        opacidad = float(opacidad_porcentaje)
+    except (TypeError, ValueError, OverflowError):
+        opacidad = 100.0
+    if not math.isfinite(opacidad):
+        opacidad = 100.0
+    opacidad = max(0.0, min(opacidad, 100.0))
     alfa = round(255 * (opacidad / 100))
     return f"#{alfa:02X}{color[1:]}"
 
 
 def color_con_transparencia(color_hex: str, transparencia_porcentaje: int | float) -> str:
-    transparencia = max(0, min(float(transparencia_porcentaje), 100))
+    try:
+        transparencia = float(transparencia_porcentaje)
+    except (TypeError, ValueError, OverflowError):
+        transparencia = 0.0
+    if not math.isfinite(transparencia):
+        transparencia = 0.0
+    transparencia = max(0.0, min(transparencia, 100.0))
     return color_con_opacidad(color_hex, 100 - transparencia)
 
 
