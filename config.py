@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import flet as ft
 
 from config_manager import (
-    CONFIGURACION_PREDETERMINADA,
     cargar_api_key,
     cargar_configuracion,
-    color_con_opacidad,
     color_con_transparencia,
     configurar_inicio_windows,
     es_color_hex,
@@ -28,8 +25,121 @@ BORDE = "#513A2E"
 ERROR = "#FF8A80"
 EXITO = "#9BE59B"
 
+TRADUCCIONES = {
+    "english": {
+        "window_title": "Nova Lens Settings",
+        "title": "Nova Lens Settings",
+        "subtitle": "Customize the popup and connect your own Gemini account.",
+        "local": "Changes are stored locally on this device.",
+        "language": "Language",
+        "english": "English",
+        "spanish": "Spanish",
+        "language_note": "The selected language is applied after saving and reopening Nova Lens.",
+        "gemini": "Google Gemini",
+        "gemini_sub": "Use your own API key to connect Nova Lens to Gemini.",
+        "api_hint": "Paste your own Gemini API key here",
+        "api_ready": "An API key is configured on this device.",
+        "api_missing": "No API key is configured yet.",
+        "api_privacy": "The key is stored only on this device in the local .env file. It is not stored in config.json or uploaded to GitHub.",
+        "preview": "Preview",
+        "preview_sub": "Visual changes are shown here before saving.",
+        "preview_text": "Nova Lens is ready. This is a preview.",
+        "appearance": "Appearance",
+        "appearance_sub": "Popup colors, transparency, size, and position.",
+        "primary": "Primary color",
+        "text_color": "Text color",
+        "secondary": "Secondary text",
+        "border": "Border color",
+        "position": "Popup position",
+        "top": "Top",
+        "bottom": "Bottom",
+        "transparency": "Transparency",
+        "font_size": "Font size",
+        "radius": "Rounded corners",
+        "margin": "Screen margin",
+        "behavior": "Behavior",
+        "behavior_sub": "Visible time and behavior when focus is lost.",
+        "visible_time": "Visible time",
+        "click_through": "Allow click-through when focus is lost",
+        "hotkeys": "Keyboard shortcuts",
+        "hotkeys_sub": "Use key+key format. Changes apply after saving.",
+        "open": "Open or reactivate",
+        "settings": "Open Settings",
+        "close": "Close Nova Lens",
+        "close_alt": "Alternative close shortcut",
+        "fixed_hotkeys": "Screenshot (P + Shift + S) and audio (P + Shift + A) shortcuts are currently fixed.",
+        "system": "System",
+        "system_sub": "Control how Nova Lens starts in Windows.",
+        "startup": "Start Nova Lens automatically with Windows",
+        "save": "Save changes",
+        "restore": "Restore defaults",
+        "saved": "Settings and API key saved. Restart Nova Lens to apply the language everywhere.",
+        "restored": "Default settings restored. The API key was not deleted.",
+        "need_key": "Paste your Google Gemini API key before saving.",
+        "invalid_color": "Invalid color format in: {fields}. Use values such as #522E18.",
+        "empty_hotkey": "Shortcuts cannot be empty: {fields}",
+        "save_error": "Could not save settings: {error}",
+        "restore_error": "Could not restore settings: {error}",
+    },
+    "spanish": {
+        "window_title": "Configuración de Nova Lens",
+        "title": "Configuración de Nova Lens",
+        "subtitle": "Personalizá el popup y conectá tu propia cuenta de Gemini.",
+        "local": "Los cambios se guardan localmente en este dispositivo.",
+        "language": "Idioma",
+        "english": "Inglés",
+        "spanish": "Español",
+        "language_note": "El idioma seleccionado se aplica después de guardar y volver a abrir Nova Lens.",
+        "gemini": "Google Gemini",
+        "gemini_sub": "Usá tu propia API key para conectar Nova Lens con Gemini.",
+        "api_hint": "Pegá aquí tu propia API key de Gemini",
+        "api_ready": "Hay una API key configurada en este dispositivo.",
+        "api_missing": "Todavía no hay una API key configurada.",
+        "api_privacy": "La clave se guarda solo en este dispositivo, dentro del archivo local .env. No se almacena en config.json ni se sube a GitHub.",
+        "preview": "Vista previa",
+        "preview_sub": "Los cambios visuales se muestran aquí antes de guardarlos.",
+        "preview_text": "Nova Lens está listo. Esta es una vista previa.",
+        "appearance": "Apariencia",
+        "appearance_sub": "Colores, transparencia, tamaño y posición del popup.",
+        "primary": "Color principal",
+        "text_color": "Color del texto",
+        "secondary": "Texto secundario",
+        "border": "Color del borde",
+        "position": "Posición del popup",
+        "top": "Arriba",
+        "bottom": "Abajo",
+        "transparency": "Transparencia",
+        "font_size": "Tamaño de fuente",
+        "radius": "Bordes redondeados",
+        "margin": "Margen de pantalla",
+        "behavior": "Comportamiento",
+        "behavior_sub": "Tiempo visible y comportamiento al perder el foco.",
+        "visible_time": "Tiempo visible",
+        "click_through": "Permitir click-through cuando pierde el foco",
+        "hotkeys": "Atajos de teclado",
+        "hotkeys_sub": "Usá el formato tecla+tecla. Los cambios se aplican al guardar.",
+        "open": "Abrir o reactivar",
+        "settings": "Abrir configuración",
+        "close": "Cerrar Nova Lens",
+        "close_alt": "Atajo alternativo para cerrar",
+        "fixed_hotkeys": "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) todavía son fijos.",
+        "system": "Sistema",
+        "system_sub": "Controlá cómo se inicia Nova Lens en Windows.",
+        "startup": "Iniciar Nova Lens automáticamente con Windows",
+        "save": "Guardar cambios",
+        "restore": "Restaurar valores",
+        "saved": "Configuración y API key guardadas. Reiniciá Nova Lens para aplicar el idioma en toda la app.",
+        "restored": "Valores predeterminados restaurados. La API key no fue eliminada.",
+        "need_key": "Pegá tu Google Gemini API key antes de guardar.",
+        "invalid_color": "Formato inválido en: {fields}. Usá valores como #522E18.",
+        "empty_hotkey": "No podés dejar atajos vacíos: {fields}",
+        "save_error": "No pude guardar la configuración: {error}",
+        "restore_error": "No pude restaurar la configuración: {error}",
+    },
+}
 
-def tarjeta(titulo: str, subtitulo: str, contenido: list[ft.Control]) -> ft.Container:
+
+def tarjeta(titulo: str, subtitulo: str, controles: list[ft.Control]) -> ft.Container:
     return ft.Container(
         bgcolor=PANEL,
         border=ft.Border.all(1, BORDE),
@@ -37,19 +147,10 @@ def tarjeta(titulo: str, subtitulo: str, contenido: list[ft.Control]) -> ft.Cont
         padding=20,
         content=ft.Column(
             controls=[
-                ft.Text(
-                    titulo,
-                    size=18,
-                    weight=ft.FontWeight.BOLD,
-                    color=TEXTO,
-                ),
-                ft.Text(
-                    subtitulo,
-                    size=12,
-                    color=TEXTO_SECUNDARIO,
-                ),
+                ft.Text(titulo, size=18, weight=ft.FontWeight.BOLD, color=TEXTO),
+                ft.Text(subtitulo, size=12, color=TEXTO_SECUNDARIO),
                 ft.Divider(color=BORDE, height=18),
-                *contenido,
+                *controles,
             ],
             spacing=12,
         ),
@@ -59,15 +160,15 @@ def tarjeta(titulo: str, subtitulo: str, contenido: list[ft.Control]) -> ft.Cont
 async def main(page: ft.Page) -> None:
     config = cargar_configuracion()
     api_key_actual = cargar_api_key()
+    idioma_actual = config["system"].get("language", "english")
+    t = TRADUCCIONES.get(idioma_actual, TRADUCCIONES["english"])
 
-    page.title = "Configuración de NovaLens"
+    page.title = t["window_title"]
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = FONDO
     page.padding = 24
-    page.spacing = 0
-
     page.window.width = 860
-    page.window.height = 780
+    page.window.height = 800
     page.window.min_width = 720
     page.window.min_height = 620
     page.window.resizable = True
@@ -77,118 +178,50 @@ async def main(page: ft.Page) -> None:
     atajos = config["hotkeys"]
     sistema = config["system"]
 
-    estado = ft.Text(
-        "Los cambios se guardan localmente en este dispositivo.",
-        size=12,
-        color=TEXTO_SECUNDARIO,
+    estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
+
+    def campo(label: str, value: str, hint: str, width: int = 210, password: bool = False) -> ft.TextField:
+        return ft.TextField(
+            label=label,
+            value=value,
+            hint_text=hint,
+            width=width,
+            password=password,
+            can_reveal_password=password,
+            border_color=BORDE,
+            focused_border_color=ACENTO,
+            color=TEXTO,
+        )
+
+    idioma = ft.Dropdown(
+        label=t["language"],
+        value=idioma_actual,
+        width=260,
+        filled=True,
+        fill_color=PANEL_SECUNDARIO,
+        border_color=BORDE,
+        focused_border_color=ACENTO,
+        color=TEXTO,
+        options=[
+            ft.DropdownOption(key="english", text=t["english"]),
+            ft.DropdownOption(key="spanish", text=t["spanish"]),
+        ],
     )
 
-    vista_transparencia = ft.Text(
-        f'{apariencia["transparency"]} %',
-        color=TEXTO,
-        weight=ft.FontWeight.BOLD,
-    )
-    vista_fuente = ft.Text(
-        f'{apariencia["font_size"]} px',
-        color=TEXTO,
-        weight=ft.FontWeight.BOLD,
-    )
-    vista_radio = ft.Text(
-        f'{apariencia["border_radius"]} px',
-        color=TEXTO,
-        weight=ft.FontWeight.BOLD,
-    )
-    vista_margen = ft.Text(
-        f'{apariencia["margin"]} px',
-        color=TEXTO,
-        weight=ft.FontWeight.BOLD,
-    )
-    vista_tiempo = ft.Text(
-        f'{comportamiento["visible_seconds"]} s',
-        color=TEXTO,
-        weight=ft.FontWeight.BOLD,
-    )
+    campo_api_key = campo("Google Gemini API Key", api_key_actual, t["api_hint"], 700, True)
+    color_principal = campo(t["primary"], apariencia["primary_color"], "#522E18")
+    color_texto = campo(t["text_color"], apariencia["text_color"], "#FFF4E8")
+    color_secundario = campo(t["secondary"], apariencia["secondary_color"], "#E8C9B2")
+    color_borde = campo(t["border"], apariencia["border_color"], "#8A5738")
 
-    color_principal = ft.TextField(
-        label="Color principal",
-        value=apariencia["primary_color"],
-        hint_text="#522E18",
-        width=210,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    color_texto = ft.TextField(
-        label="Color del texto",
-        value=apariencia["text_color"],
-        hint_text="#FFF4E8",
-        width=210,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    color_secundario = ft.TextField(
-        label="Texto secundario",
-        value=apariencia["secondary_color"],
-        hint_text="#E8C9B2",
-        width=210,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    color_borde = ft.TextField(
-        label="Color del borde",
-        value=apariencia["border_color"],
-        hint_text="#8A5738",
-        width=210,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-
-    transparencia = ft.Slider(
-        min=0,
-        max=90,
-        divisions=18,
-        value=apariencia["transparency"],
-        active_color=ACENTO,
-        expand=True,
-    )
-    fuente = ft.Slider(
-        min=12,
-        max=24,
-        divisions=12,
-        value=apariencia["font_size"],
-        active_color=ACENTO,
-        expand=True,
-    )
-    radio = ft.Slider(
-        min=0,
-        max=36,
-        divisions=18,
-        value=apariencia["border_radius"],
-        active_color=ACENTO,
-        expand=True,
-    )
-    margen = ft.Slider(
-        min=0,
-        max=32,
-        divisions=16,
-        value=apariencia["margin"],
-        active_color=ACENTO,
-        expand=True,
-    )
-    tiempo = ft.Slider(
-        min=3,
-        max=60,
-        divisions=57,
-        value=comportamiento["visible_seconds"],
-        active_color=ACENTO,
-        expand=True,
-    )
+    transparencia = ft.Slider(min=0, max=90, divisions=18, value=apariencia["transparency"], active_color=ACENTO, expand=True)
+    fuente = ft.Slider(min=12, max=24, divisions=12, value=apariencia["font_size"], active_color=ACENTO, expand=True)
+    radio = ft.Slider(min=0, max=36, divisions=18, value=apariencia["border_radius"], active_color=ACENTO, expand=True)
+    margen = ft.Slider(min=0, max=32, divisions=16, value=apariencia["margin"], active_color=ACENTO, expand=True)
+    tiempo = ft.Slider(min=3, max=60, divisions=57, value=comportamiento["visible_seconds"], active_color=ACENTO, expand=True)
 
     posicion = ft.Dropdown(
-        label="Posición del popup",
+        label=t["position"],
         value=apariencia["position"],
         width=260,
         filled=True,
@@ -197,182 +230,42 @@ async def main(page: ft.Page) -> None:
         focused_border_color=ACENTO,
         color=TEXTO,
         options=[
-            ft.DropdownOption(key="top", text="Arriba"),
-            ft.DropdownOption(key="bottom", text="Abajo"),
+            ft.DropdownOption(key="top", text=t["top"]),
+            ft.DropdownOption(key="bottom", text=t["bottom"]),
         ],
     )
 
     click_through = ft.Switch(
-        label="Permitir click-through cuando pierde el foco",
+        label=t["click_through"],
         value=comportamiento["click_through_on_blur"],
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
-
-    atajo_abrir = ft.TextField(
-        label="Abrir o reactivar",
-        value=atajos["open"],
-        hint_text="p+enter",
-        width=310,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    atajo_config = ft.TextField(
-        label="Abrir configuración",
-        value=atajos["settings"],
-        hint_text="p+shift+enter",
-        width=310,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    atajo_cerrar = ft.TextField(
-        label="Cerrar NovaLens",
-        value=atajos["close"],
-        hint_text="p+backspace",
-        width=310,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-    atajo_cerrar_alt = ft.TextField(
-        label="Atajo alternativo para cerrar",
-        value=atajos["close_alt"],
-        hint_text="p+delete",
-        width=310,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-
-    campo_api_key = ft.TextField(
-        label="Google Gemini API Key",
-        value=api_key_actual,
-        hint_text="Pegá aquí tu propia API key de Gemini",
-        password=True,
-        can_reveal_password=True,
-        expand=True,
-        border_color=BORDE,
-        focused_border_color=ACENTO,
-        color=TEXTO,
-    )
-
-    estado_api_key = ft.Text(
-        (
-            "API key configurada en este dispositivo."
-            if api_key_actual
-            else "Todavía no hay una API key configurada."
-        ),
-        size=12,
-        color=EXITO if api_key_actual else TEXTO_SECUNDARIO,
-    )
-
     inicio_windows = ft.Switch(
-        label="Iniciar NovaLens automáticamente con Windows",
+        label=t["startup"],
         value=sistema["start_with_windows"],
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
 
-    texto_vista_previa = ft.Text(
-        "NovaLens está listo. Esta es una vista previa.",
-        color=apariencia["text_color"],
-        size=apariencia["font_size"],
-    )
+    atajo_abrir = campo(t["open"], atajos["open"], "p+enter", 310)
+    atajo_config = campo(t["settings"], atajos["settings"], "p+shift+enter", 310)
+    atajo_cerrar = campo(t["close"], atajos["close"], "p+backspace", 310)
+    atajo_cerrar_alt = campo(t["close_alt"], atajos["close_alt"], "p+delete", 310)
 
     vista_previa = ft.Container(
         height=132,
-        bgcolor=color_con_transparencia(
-            apariencia["primary_color"],
-            apariencia["transparency"],
-        ),
+        bgcolor=color_con_transparencia(apariencia["primary_color"], apariencia["transparency"]),
         border=ft.Border.all(1, apariencia["border_color"]),
         border_radius=apariencia["border_radius"],
         padding=18,
         content=ft.Column(
             controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text(
-                            "NovaLens",
-                            color=apariencia["text_color"],
-                            size=max(18, apariencia["font_size"] + 2),
-                            weight=ft.FontWeight.BOLD,
-                        ),
-                        ft.Text(
-                            "Powered by Google Gemini",
-                            color=apariencia["secondary_color"],
-                            size=12,
-                        ),
-                    ]
-                ),
-                texto_vista_previa,
-            ],
-            spacing=10,
+                ft.Text("Nova Lens", color=apariencia["text_color"], size=20, weight=ft.FontWeight.BOLD),
+                ft.Text(t["preview_text"], color=apariencia["text_color"], size=apariencia["font_size"]),
+            ]
         ),
     )
-
-    def actualizar_vista_previa(e: Any = None) -> None:
-        vista_transparencia.value = f"{round(transparencia.value or 0)} %"
-        vista_fuente.value = f"{round(fuente.value or 16)} px"
-        vista_radio.value = f"{round(radio.value or 0)} px"
-        vista_margen.value = f"{round(margen.value or 0)} px"
-        vista_tiempo.value = f"{round(tiempo.value or 10)} s"
-
-        principal = (
-            color_principal.value.strip()
-            if es_color_hex(color_principal.value)
-            else "#522E18"
-        )
-        texto = (
-            color_texto.value.strip()
-            if es_color_hex(color_texto.value)
-            else "#FFF4E8"
-        )
-        secundario = (
-            color_secundario.value.strip()
-            if es_color_hex(color_secundario.value)
-            else "#E8C9B2"
-        )
-        borde = (
-            color_borde.value.strip()
-            if es_color_hex(color_borde.value)
-            else "#8A5738"
-        )
-
-        vista_previa.bgcolor = color_con_transparencia(
-            principal,
-            transparencia.value or 0,
-        )
-        vista_previa.border = ft.Border.all(1, borde)
-        vista_previa.border_radius = round(radio.value or 0)
-        texto_vista_previa.color = texto
-        texto_vista_previa.size = round(fuente.value or 16)
-
-        encabezado = vista_previa.content.controls[0]
-        encabezado.controls[0].color = texto
-        encabezado.controls[0].size = max(18, round(fuente.value or 16) + 2)
-        encabezado.controls[1].color = secundario
-
-        page.update()
-
-    for campo in (
-        color_principal,
-        color_texto,
-        color_secundario,
-        color_borde,
-    ):
-        campo.on_change = actualizar_vista_previa
-
-    for control in (
-        transparencia,
-        fuente,
-        radio,
-        margen,
-        tiempo,
-    ):
-        control.on_change = actualizar_vista_previa
 
     def mostrar_estado(mensaje: str, correcto: bool) -> None:
         estado.value = mensaje
@@ -381,45 +274,25 @@ async def main(page: ft.Page) -> None:
 
     def leer_formulario() -> dict[str, Any] | None:
         colores = {
-            "Color principal": color_principal.value,
-            "Color del texto": color_texto.value,
-            "Texto secundario": color_secundario.value,
-            "Color del borde": color_borde.value,
+            t["primary"]: color_principal.value,
+            t["text_color"]: color_texto.value,
+            t["secondary"]: color_secundario.value,
+            t["border"]: color_borde.value,
         }
-
-        invalidos = [
-            nombre
-            for nombre, valor in colores.items()
-            if not es_color_hex(valor)
-        ]
-
+        invalidos = [nombre for nombre, valor in colores.items() if not es_color_hex(valor)]
         if invalidos:
-            mostrar_estado(
-                "Formato inválido en: "
-                + ", ".join(invalidos)
-                + ". Usá colores como #522E18.",
-                False,
-            )
+            mostrar_estado(t["invalid_color"].format(fields=", ".join(invalidos)), False)
             return None
 
         campos_atajos = {
-            "Abrir": atajo_abrir.value,
-            "Configuración": atajo_config.value,
-            "Cerrar": atajo_cerrar.value,
-            "Cerrar alternativo": atajo_cerrar_alt.value,
+            t["open"]: atajo_abrir.value,
+            t["settings"]: atajo_config.value,
+            t["close"]: atajo_cerrar.value,
+            t["close_alt"]: atajo_cerrar_alt.value,
         }
-
-        vacios = [
-            nombre
-            for nombre, valor in campos_atajos.items()
-            if not (valor or "").strip()
-        ]
-
+        vacios = [nombre for nombre, valor in campos_atajos.items() if not (valor or "").strip()]
         if vacios:
-            mostrar_estado(
-                "No podés dejar atajos vacíos: " + ", ".join(vacios),
-                False,
-            )
+            mostrar_estado(t["empty_hotkey"].format(fields=", ".join(vacios)), False)
             return None
 
         return {
@@ -446,94 +319,43 @@ async def main(page: ft.Page) -> None:
             },
             "system": {
                 "start_with_windows": bool(inicio_windows.value),
+                "language": idioma.value or "english",
             },
         }
 
     def guardar(e: Any = None) -> None:
-        nueva_config = leer_formulario()
-        if nueva_config is None:
+        nueva = leer_formulario()
+        if nueva is None:
             return
-
-        clave_api = (campo_api_key.value or "").strip()
-        if not clave_api:
-            mostrar_estado(
-                "Pegá tu propia Google Gemini API key antes de guardar.",
-                False,
-            )
+        clave = (campo_api_key.value or "").strip()
+        if not clave:
+            mostrar_estado(t["need_key"], False)
             return
-
         try:
-            guardar_api_key(clave_api)
-            guardada = guardar_configuracion(nueva_config)
-            configurar_inicio_windows(
-                guardada["system"]["start_with_windows"]
-            )
+            guardar_api_key(clave)
+            guardada = guardar_configuracion(nueva)
+            configurar_inicio_windows(guardada["system"]["start_with_windows"])
         except Exception as error:
-            mostrar_estado(f"No pude guardar la configuración: {error}", False)
+            mostrar_estado(t["save_error"].format(error=error), False)
             return
-
-        estado_api_key.value = "API key guardada localmente en este dispositivo."
-        estado_api_key.color = EXITO
-        mostrar_estado(
-            "Configuración y API key guardadas. NovaLens aplicará los cambios automáticamente.",
-            True,
-        )
-
-    def cargar_en_formulario(nueva: dict[str, Any]) -> None:
-        apariencia_nueva = nueva["appearance"]
-        comportamiento_nuevo = nueva["behavior"]
-        atajos_nuevos = nueva["hotkeys"]
-        sistema_nuevo = nueva["system"]
-
-        color_principal.value = apariencia_nueva["primary_color"]
-        color_texto.value = apariencia_nueva["text_color"]
-        color_secundario.value = apariencia_nueva["secondary_color"]
-        color_borde.value = apariencia_nueva["border_color"]
-
-        transparencia.value = apariencia_nueva["transparency"]
-        fuente.value = apariencia_nueva["font_size"]
-        radio.value = apariencia_nueva["border_radius"]
-        margen.value = apariencia_nueva["margin"]
-        posicion.value = apariencia_nueva["position"]
-
-        tiempo.value = comportamiento_nuevo["visible_seconds"]
-        click_through.value = comportamiento_nuevo["click_through_on_blur"]
-
-        atajo_abrir.value = atajos_nuevos["open"]
-        atajo_config.value = atajos_nuevos["settings"]
-        atajo_cerrar.value = atajos_nuevos["close"]
-        atajo_cerrar_alt.value = atajos_nuevos["close_alt"]
-
-        inicio_windows.value = sistema_nuevo["start_with_windows"]
-
-        actualizar_vista_previa()
+        mostrar_estado(t["saved"], True)
 
     def restaurar(e: Any = None) -> None:
         try:
-            predeterminada = restaurar_configuracion()
+            restaurar_configuracion()
             configurar_inicio_windows(False)
-            cargar_en_formulario(predeterminada)
         except Exception as error:
-            mostrar_estado(f"No pude restaurar la configuración: {error}", False)
+            mostrar_estado(t["restore_error"].format(error=error), False)
             return
+        mostrar_estado(t["restored"], True)
 
-        mostrar_estado(
-            "Valores predeterminados restaurados. La API key no fue eliminada.",
-            True,
-        )
-
-    boton_guardar = ft.Button(
-        content="Guardar cambios",
-        icon=ft.Icons.SAVE,
-        bgcolor=ACENTO,
-        color=TEXTO,
-        on_click=guardar,
-    )
-    boton_restaurar = ft.OutlinedButton(
-        content="Restaurar valores",
-        icon=ft.Icons.RESTART_ALT,
-        on_click=restaurar,
-    )
+    def fila_slider(etiqueta: str, control: ft.Slider, sufijo: str) -> ft.Row:
+        valor = ft.Text(f"{round(control.value or 0)} {sufijo}", color=TEXTO, weight=ft.FontWeight.BOLD)
+        def actualizar(e: Any = None) -> None:
+            valor.value = f"{round(control.value or 0)} {sufijo}"
+            page.update()
+        control.on_change = actualizar
+        return ft.Row(controls=[ft.Text(etiqueta, color=TEXTO, width=150), control, valor])
 
     contenido = ft.Column(
         controls=[
@@ -541,137 +363,59 @@ async def main(page: ft.Page) -> None:
                 controls=[
                     ft.Column(
                         controls=[
-                            ft.Text(
-                                "Configuración de NovaLens",
-                                size=28,
-                                weight=ft.FontWeight.BOLD,
-                                color=TEXTO,
-                            ),
-                            ft.Text(
-                                "Personalizá el popup y conectá tu propia cuenta de Gemini.",
-                                color=TEXTO_SECUNDARIO,
-                            ),
+                            ft.Text(t["title"], size=28, weight=ft.FontWeight.BOLD, color=TEXTO),
+                            ft.Text(t["subtitle"], color=TEXTO_SECUNDARIO),
                         ],
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Text(
-                        "1.0.1",
-                        color=TEXTO,
-                        bgcolor=ACENTO,
-                        weight=ft.FontWeight.BOLD,
-                    ),
+                    ft.Text("1.0.1", color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
                 ]
             ),
             estado,
+            tarjeta(t["language"], t["language_note"], [idioma]),
             tarjeta(
-                "Google Gemini",
-                "Usá tu propia API key para conectar NovaLens con Gemini.",
+                t["gemini"],
+                t["gemini_sub"],
                 [
                     campo_api_key,
-                    estado_api_key,
-                    ft.Text(
-                        "La clave se guarda solamente en este dispositivo, dentro del archivo local .env. No se almacena en config.json ni se sube a GitHub.",
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
+                    ft.Text(t["api_ready"] if api_key_actual else t["api_missing"], size=12, color=EXITO if api_key_actual else TEXTO_SECUNDARIO),
+                    ft.Text(t["api_privacy"], size=12, color=TEXTO_SECUNDARIO),
                 ],
             ),
+            tarjeta(t["preview"], t["preview_sub"], [vista_previa]),
             tarjeta(
-                "Vista previa",
-                "Los cambios visuales se muestran aquí antes de guardarlos.",
-                [vista_previa],
-            ),
-            tarjeta(
-                "Apariencia",
-                "Colores, transparencia, tamaño y posición del popup.",
+                t["appearance"],
+                t["appearance_sub"],
                 [
-                    ft.Row(
-                        controls=[
-                            color_principal,
-                            color_texto,
-                            color_secundario,
-                        ],
-                        wrap=True,
-                        spacing=12,
-                    ),
-                    ft.Row(
-                        controls=[color_borde, posicion],
-                        wrap=True,
-                        spacing=12,
-                    ),
-                    ft.Row(
-                        controls=[
-                            ft.Text("Transparencia", color=TEXTO, width=135),
-                            transparencia,
-                            vista_transparencia,
-                        ]
-                    ),
-                    ft.Row(
-                        controls=[
-                            ft.Text("Tamaño de fuente", color=TEXTO, width=135),
-                            fuente,
-                            vista_fuente,
-                        ]
-                    ),
-                    ft.Row(
-                        controls=[
-                            ft.Text("Bordes redondeados", color=TEXTO, width=135),
-                            radio,
-                            vista_radio,
-                        ]
-                    ),
-                    ft.Row(
-                        controls=[
-                            ft.Text("Margen de pantalla", color=TEXTO, width=135),
-                            margen,
-                            vista_margen,
-                        ]
-                    ),
+                    ft.Row(controls=[color_principal, color_texto, color_secundario], wrap=True, spacing=12),
+                    ft.Row(controls=[color_borde, posicion], wrap=True, spacing=12),
+                    fila_slider(t["transparency"], transparencia, "%"),
+                    fila_slider(t["font_size"], fuente, "px"),
+                    fila_slider(t["radius"], radio, "px"),
+                    fila_slider(t["margin"], margen, "px"),
                 ],
             ),
             tarjeta(
-                "Comportamiento",
-                "Tiempo visible y comportamiento al perder el foco.",
+                t["behavior"],
+                t["behavior_sub"],
+                [fila_slider(t["visible_time"], tiempo, "s"), click_through],
+            ),
+            tarjeta(
+                t["hotkeys"],
+                t["hotkeys_sub"],
                 [
-                    ft.Row(
-                        controls=[
-                            ft.Text("Tiempo visible", color=TEXTO, width=135),
-                            tiempo,
-                            vista_tiempo,
-                        ]
-                    ),
-                    click_through,
+                    ft.Row(controls=[atajo_abrir, atajo_config], wrap=True, spacing=12),
+                    ft.Row(controls=[atajo_cerrar, atajo_cerrar_alt], wrap=True, spacing=12),
+                    ft.Text(t["fixed_hotkeys"], size=12, color=TEXTO_SECUNDARIO),
                 ],
             ),
-            tarjeta(
-                "Atajos de teclado",
-                "Usá el formato tecla+tecla. Los cambios se aplican al guardar.",
-                [
-                    ft.Row(
-                        controls=[atajo_abrir, atajo_config],
-                        wrap=True,
-                        spacing=12,
-                    ),
-                    ft.Row(
-                        controls=[atajo_cerrar, atajo_cerrar_alt],
-                        wrap=True,
-                        spacing=12,
-                    ),
-                    ft.Text(
-                        "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) todavía son fijos.",
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
-                ],
-            ),
-            tarjeta(
-                "Sistema",
-                "Controlá cómo se inicia NovaLens en Windows.",
-                [inicio_windows],
-            ),
+            tarjeta(t["system"], t["system_sub"], [inicio_windows]),
             ft.Row(
-                controls=[boton_guardar, boton_restaurar],
+                controls=[
+                    ft.Button(content=t["save"], icon=ft.Icons.SAVE, bgcolor=ACENTO, color=TEXTO, on_click=guardar),
+                    ft.OutlinedButton(content=t["restore"], icon=ft.Icons.RESTART_ALT, on_click=restaurar),
+                ],
                 alignment=ft.MainAxisAlignment.END,
             ),
         ],
