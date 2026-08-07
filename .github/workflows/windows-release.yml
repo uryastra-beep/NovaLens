@@ -1,15 +1,9 @@
 # Official Nova Lens v1.0.1 release automation
 name: Publish Windows Release
 
+# Publishing a release is an explicit action. Normal pushes and merged pull
+# requests must never publish production artifacts automatically.
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-    types:
-      - closed
   workflow_dispatch:
 
 permissions:
@@ -27,7 +21,6 @@ env:
 
 jobs:
   publish:
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: windows-latest
     timeout-minutes: 35
 
