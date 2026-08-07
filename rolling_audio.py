@@ -94,6 +94,11 @@ class RollingAudioBuffer:
         except Exception:
             pass
 
+    def _clear_audio(self) -> None:
+        with self._lock:
+            self._chunks.clear()
+            self._total_bytes = 0
+
     def start(self) -> None:
         if self.is_running:
             return
@@ -104,6 +109,9 @@ class RollingAudioBuffer:
         self._stream = None
         self._close_stream(stale_stream)
 
+        # A restarted/default device can use a different sample rate. Never mix
+        # PCM captured under the old stream with the newly opened stream.
+        self._clear_audio()
         self._last_error = ""
 
         device_info = sd.query_devices(kind="input")
@@ -134,10 +142,7 @@ class RollingAudioBuffer:
         stream = self._stream
         self._stream = None
         self._close_stream(stream)
-
-        with self._lock:
-            self._chunks.clear()
-            self._total_bytes = 0
+        self._clear_audio()
 
     def available_seconds(self) -> float:
         bytes_per_second = (
