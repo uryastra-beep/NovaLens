@@ -37,6 +37,9 @@ PS_SOLID = 0
 NULL_BRUSH = 5
 TRANSPARENT = 1
 
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+PROCESS_PER_MONITOR_DPI_AWARE = 2
+
 
 def normalizar_region(
     inicio: tuple[int, int],
@@ -71,17 +74,40 @@ def _preparar_dpi() -> None:
     if os.name != "nt":
         return
 
+    user32 = ctypes.windll.user32
+
     try:
-        # Per-monitor v2 keeps Win32 mouse coordinates aligned with ImageGrab.
-        ctypes.windll.user32.SetProcessDpiAwarenessContext(
-            ctypes.c_void_p(-4)
+        # The selector runs in an asyncio worker after Flet has already created
+        # its window. Process DPI awareness can no longer be changed at that
+        # point, but the selector thread can still use Per-Monitor V2.
+        establecer_hilo = user32.SetThreadDpiAwarenessContext
+        establecer_hilo.argtypes = [wintypes.HANDLE]
+        establecer_hilo.restype = wintypes.HANDLE
+        contexto_anterior = establecer_hilo(
+            ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
         )
-        return
+
+        if contexto_anterior:
+            return
     except Exception:
         pass
 
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        establecer_proceso = user32.SetProcessDpiAwarenessContext
+        establecer_proceso.argtypes = [wintypes.HANDLE]
+        establecer_proceso.restype = wintypes.BOOL
+
+        if establecer_proceso(
+            ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        ):
+            return
+    except Exception:
+        pass
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(
+            PROCESS_PER_MONITOR_DPI_AWARE
+        )
     except Exception:
         pass
 
