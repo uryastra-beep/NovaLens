@@ -46,6 +46,8 @@ OCULTAR_AL_PERDER_FOCO = COMPORTAMIENTO["click_through_on_blur"]
 
 ALTURA_MINIMA = 145
 ALTURA_MAXIMA = 378
+ALTURA_CONTROLES_FIJOS = 112
+ALTURA_RESPUESTA_MINIMA = 32
 DURACION_ENTRADA_MS = 550
 DURACION_SALIDA_MS = 650
 RETRASO_OCULTAR_POR_BLUR = 0.18
@@ -145,6 +147,13 @@ def calcular_altura(texto: str, ancho: int) -> int:
     return limitar_altura(120 + lineas * (TAMANO_FUENTE + 7))
 
 
+def calcular_altura_respuesta(altura_popup: int | float) -> int:
+    return max(
+        ALTURA_RESPUESTA_MINIMA,
+        limitar_altura(altura_popup) - ALTURA_CONTROLES_FIJOS,
+    )
+
+
 async def main(page: ft.Page) -> None:
     _, _, ancho_area, _ = obtener_area_trabajo()
     ancho_popup = max(420, ancho_area - MARGEN_PANTALLA * 2)
@@ -171,6 +180,7 @@ async def main(page: ft.Page) -> None:
     boton_enviar: ft.TextButton
     boton_listo: ft.TextButton
     popup: ft.Container
+    zona_respuesta: ft.ListView | None = None
 
     def aplicar_geometria(altura: int | float) -> int:
         altura_segura = limitar_altura(altura)
@@ -190,6 +200,9 @@ async def main(page: ft.Page) -> None:
             )
         else:
             page.window.top = arriba + MARGEN_PANTALLA
+
+        if zona_respuesta is not None:
+            zona_respuesta.height = calcular_altura_respuesta(altura_segura)
 
         return altura_segura
 
@@ -541,6 +554,11 @@ async def main(page: ft.Page) -> None:
             reiniciar_temporizador()
 
             try:
+                await zona_respuesta.scroll_to(offset=0, duration=1)
+            except Exception:
+                pass
+
+            try:
                 await campo_pregunta.focus()
             except Exception:
                 pass
@@ -632,11 +650,12 @@ async def main(page: ft.Page) -> None:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    # Keep long answers inside a dedicated scroll viewport.
+    # A scrollable control needs an explicit viewport in this frameless window.
     zona_respuesta = ft.ListView(
         controls=[texto_respuesta],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
+        height=calcular_altura_respuesta(altura_actual),
+        build_controls_on_demand=False,
+        scroll=ft.ScrollMode.ALWAYS,
         scroll_interval=50,
         on_scroll=registrar_interaccion,
     )
