@@ -261,7 +261,8 @@ The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.ex
 - [ ] Screen region selection.
 - [ ] Compact and normal display modes.
 - [ ] Short video analysis.
-- [ ] Error-reporting and Discord integration.
+- [x] Official Discord server and community integration.
+- [ ] Functional in-app error-reporting button.
 - [ ] Windows installer and code signing.
 - [ ] Native Linux version.
 
