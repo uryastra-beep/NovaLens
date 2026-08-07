@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 import flet as ft
+import keyboard
 
 from config_manager import (
+    CONFIGURACION_PREDETERMINADA,
     cargar_api_key,
     cargar_configuracion,
     color_con_transparencia,
@@ -24,6 +26,8 @@ ACENTO = "#A86F4B"
 BORDE = "#513A2E"
 ERROR = "#FF8A80"
 EXITO = "#9BE59B"
+
+ATAJOS_FIJOS = {"p+shift+s", "p+shift+a"}
 
 TRADUCCIONES = {
     "english": {
@@ -67,7 +71,7 @@ TRADUCCIONES = {
         "settings": "Open Settings",
         "close": "Close Nova Lens",
         "close_alt": "Alternative close shortcut",
-        "fixed_hotkeys": "Screenshot (P + Shift + S) and audio (P + Shift + A) shortcuts are currently fixed.",
+        "fixed_hotkeys": "Screenshot (P + Shift + S) and audio (P + Shift + A) shortcuts are fixed in v1.0.1.",
         "system": "System",
         "system_sub": "Control how Nova Lens starts in Windows.",
         "startup": "Start Nova Lens automatically with Windows",
@@ -78,6 +82,9 @@ TRADUCCIONES = {
         "need_key": "Paste your Google Gemini API key before saving.",
         "invalid_color": "Invalid color format in: {fields}. Use values such as #522E18.",
         "empty_hotkey": "Shortcuts cannot be empty: {fields}",
+        "invalid_hotkey": "Invalid shortcut format in: {fields}",
+        "duplicate_hotkey": "Each shortcut must be unique. Duplicated: {fields}",
+        "fixed_collision": "These shortcuts are reserved for screenshot/audio and cannot be reused: {fields}",
         "save_error": "Could not save settings: {error}",
         "restore_error": "Could not restore settings: {error}",
     },
@@ -122,7 +129,7 @@ TRADUCCIONES = {
         "settings": "Abrir configuración",
         "close": "Cerrar Nova Lens",
         "close_alt": "Atajo alternativo para cerrar",
-        "fixed_hotkeys": "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) todavía son fijos.",
+        "fixed_hotkeys": "Los atajos de pantalla (P + Shift + S) y audio (P + Shift + A) son fijos en v1.0.1.",
         "system": "Sistema",
         "system_sub": "Controlá cómo se inicia Nova Lens en Windows.",
         "startup": "Iniciar Nova Lens automáticamente con Windows",
@@ -133,6 +140,9 @@ TRADUCCIONES = {
         "need_key": "Pegá tu Google Gemini API key antes de guardar.",
         "invalid_color": "Formato inválido en: {fields}. Usá valores como #522E18.",
         "empty_hotkey": "No podés dejar atajos vacíos: {fields}",
+        "invalid_hotkey": "Formato de atajo inválido en: {fields}",
+        "duplicate_hotkey": "Cada atajo debe ser único. Repetidos: {fields}",
+        "fixed_collision": "Estos atajos están reservados para pantalla/audio y no se pueden reutilizar: {fields}",
         "save_error": "No pude guardar la configuración: {error}",
         "restore_error": "No pude restaurar la configuración: {error}",
     },
@@ -180,7 +190,13 @@ async def main(page: ft.Page) -> None:
 
     estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
 
-    def campo(label: str, value: str, hint: str, width: int = 210, password: bool = False) -> ft.TextField:
+    def campo(
+        label: str,
+        value: str,
+        hint: str,
+        width: int = 210,
+        password: bool = False,
+    ) -> ft.TextField:
         return ft.TextField(
             label=label,
             value=value,
@@ -253,24 +269,64 @@ async def main(page: ft.Page) -> None:
     atajo_cerrar = campo(t["close"], atajos["close"], "p+backspace", 310)
     atajo_cerrar_alt = campo(t["close_alt"], atajos["close_alt"], "p+delete", 310)
 
+    preview_title = ft.Text(
+        "Nova Lens",
+        color=apariencia["text_color"],
+        size=20,
+        weight=ft.FontWeight.BOLD,
+    )
+    preview_body = ft.Text(
+        t["preview_text"],
+        color=apariencia["text_color"],
+        size=apariencia["font_size"],
+    )
     vista_previa = ft.Container(
         height=132,
         bgcolor=color_con_transparencia(apariencia["primary_color"], apariencia["transparency"]),
         border=ft.Border.all(1, apariencia["border_color"]),
         border_radius=apariencia["border_radius"],
         padding=18,
-        content=ft.Column(
-            controls=[
-                ft.Text("Nova Lens", color=apariencia["text_color"], size=20, weight=ft.FontWeight.BOLD),
-                ft.Text(t["preview_text"], color=apariencia["text_color"], size=apariencia["font_size"]),
-            ]
-        ),
+        content=ft.Column(controls=[preview_title, preview_body]),
     )
 
     def mostrar_estado(mensaje: str, correcto: bool) -> None:
         estado.value = mensaje
         estado.color = EXITO if correcto else ERROR
         page.update()
+
+    def actualizar_preview(e: Any = None) -> None:
+        primary = (
+            (color_principal.value or "").strip()
+            if es_color_hex(color_principal.value)
+            else apariencia["primary_color"]
+        )
+        text = (
+            (color_texto.value or "").strip()
+            if es_color_hex(color_texto.value)
+            else apariencia["text_color"]
+        )
+        border = (
+            (color_borde.value or "").strip()
+            if es_color_hex(color_borde.value)
+            else apariencia["border_color"]
+        )
+
+        vista_previa.bgcolor = color_con_transparencia(
+            primary,
+            round(transparencia.value or 0),
+        )
+        vista_previa.border = ft.Border.all(1, border)
+        vista_previa.border_radius = round(radio.value or 0)
+        preview_title.color = text
+        preview_body.color = text
+        preview_body.size = round(fuente.value or 16)
+        page.update()
+
+    for control in (color_principal, color_texto, color_secundario, color_borde):
+        control.on_change = actualizar_preview
+
+    def normalizar_atajo(valor: str | None) -> str:
+        return (valor or "").strip().lower()
 
     def leer_formulario() -> dict[str, Any] | None:
         colores = {
@@ -285,14 +341,46 @@ async def main(page: ft.Page) -> None:
             return None
 
         campos_atajos = {
-            t["open"]: atajo_abrir.value,
-            t["settings"]: atajo_config.value,
-            t["close"]: atajo_cerrar.value,
-            t["close_alt"]: atajo_cerrar_alt.value,
+            t["open"]: normalizar_atajo(atajo_abrir.value),
+            t["settings"]: normalizar_atajo(atajo_config.value),
+            t["close"]: normalizar_atajo(atajo_cerrar.value),
+            t["close_alt"]: normalizar_atajo(atajo_cerrar_alt.value),
         }
-        vacios = [nombre for nombre, valor in campos_atajos.items() if not (valor or "").strip()]
+
+        vacios = [nombre for nombre, valor in campos_atajos.items() if not valor]
         if vacios:
             mostrar_estado(t["empty_hotkey"].format(fields=", ".join(vacios)), False)
+            return None
+
+        invalidos_atajo: list[str] = []
+        for nombre, valor in campos_atajos.items():
+            try:
+                keyboard.parse_hotkey(valor)
+            except Exception:
+                invalidos_atajo.append(nombre)
+        if invalidos_atajo:
+            mostrar_estado(t["invalid_hotkey"].format(fields=", ".join(invalidos_atajo)), False)
+            return None
+
+        vistos: dict[str, list[str]] = {}
+        for nombre, valor in campos_atajos.items():
+            vistos.setdefault(valor, []).append(nombre)
+        repetidos = [
+            ", ".join(nombres)
+            for nombres in vistos.values()
+            if len(nombres) > 1
+        ]
+        if repetidos:
+            mostrar_estado(t["duplicate_hotkey"].format(fields="; ".join(repetidos)), False)
+            return None
+
+        colisiones = [
+            nombre
+            for nombre, valor in campos_atajos.items()
+            if valor in ATAJOS_FIJOS
+        ]
+        if colisiones:
+            mostrar_estado(t["fixed_collision"].format(fields=", ".join(colisiones)), False)
             return None
 
         return {
@@ -312,16 +400,41 @@ async def main(page: ft.Page) -> None:
                 "click_through_on_blur": bool(click_through.value),
             },
             "hotkeys": {
-                "open": atajo_abrir.value.strip(),
-                "settings": atajo_config.value.strip(),
-                "close": atajo_cerrar.value.strip(),
-                "close_alt": atajo_cerrar_alt.value.strip(),
+                "open": campos_atajos[t["open"]],
+                "settings": campos_atajos[t["settings"]],
+                "close": campos_atajos[t["close"]],
+                "close_alt": campos_atajos[t["close_alt"]],
             },
             "system": {
                 "start_with_windows": bool(inicio_windows.value),
                 "language": idioma.value or "english",
             },
         }
+
+    def aplicar_config_a_controles(datos: dict[str, Any]) -> None:
+        ap = datos["appearance"]
+        beh = datos["behavior"]
+        hk = datos["hotkeys"]
+        syscfg = datos["system"]
+
+        color_principal.value = ap["primary_color"]
+        color_texto.value = ap["text_color"]
+        color_secundario.value = ap["secondary_color"]
+        color_borde.value = ap["border_color"]
+        transparencia.value = ap["transparency"]
+        fuente.value = ap["font_size"]
+        radio.value = ap["border_radius"]
+        margen.value = ap["margin"]
+        posicion.value = ap["position"]
+        tiempo.value = beh["visible_seconds"]
+        click_through.value = beh["click_through_on_blur"]
+        atajo_abrir.value = hk["open"]
+        atajo_config.value = hk["settings"]
+        atajo_cerrar.value = hk["close"]
+        atajo_cerrar_alt.value = hk["close_alt"]
+        inicio_windows.value = syscfg["start_with_windows"]
+        idioma.value = syscfg["language"]
+        actualizar_preview()
 
     def guardar(e: Any = None) -> None:
         nueva = leer_formulario()
@@ -342,20 +455,29 @@ async def main(page: ft.Page) -> None:
 
     def restaurar(e: Any = None) -> None:
         try:
-            restaurar_configuracion()
+            restaurada = restaurar_configuracion()
             configurar_inicio_windows(False)
+            aplicar_config_a_controles(restaurada)
         except Exception as error:
             mostrar_estado(t["restore_error"].format(error=error), False)
             return
         mostrar_estado(t["restored"], True)
 
     def fila_slider(etiqueta: str, control: ft.Slider, sufijo: str) -> ft.Row:
-        valor = ft.Text(f"{round(control.value or 0)} {sufijo}", color=TEXTO, weight=ft.FontWeight.BOLD)
+        valor = ft.Text(
+            f"{round(control.value or 0)} {sufijo}",
+            color=TEXTO,
+            weight=ft.FontWeight.BOLD,
+        )
+
         def actualizar(e: Any = None) -> None:
             valor.value = f"{round(control.value or 0)} {sufijo}"
-            page.update()
+            actualizar_preview()
+
         control.on_change = actualizar
-        return ft.Row(controls=[ft.Text(etiqueta, color=TEXTO, width=150), control, valor])
+        return ft.Row(
+            controls=[ft.Text(etiqueta, color=TEXTO, width=150), control, valor]
+        )
 
     contenido = ft.Column(
         controls=[
@@ -379,7 +501,11 @@ async def main(page: ft.Page) -> None:
                 t["gemini_sub"],
                 [
                     campo_api_key,
-                    ft.Text(t["api_ready"] if api_key_actual else t["api_missing"], size=12, color=EXITO if api_key_actual else TEXTO_SECUNDARIO),
+                    ft.Text(
+                        t["api_ready"] if api_key_actual else t["api_missing"],
+                        size=12,
+                        color=EXITO if api_key_actual else TEXTO_SECUNDARIO,
+                    ),
                     ft.Text(t["api_privacy"], size=12, color=TEXTO_SECUNDARIO),
                 ],
             ),
