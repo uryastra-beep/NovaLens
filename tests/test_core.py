@@ -186,6 +186,62 @@ class ScreenRegionTests(unittest.TestCase):
             screen_selector.PROCESS_PER_MONITOR_DPI_AWARE
         )
 
+    def test_native_capture_uses_exact_virtual_desktop_coordinates(self) -> None:
+        select_object = mock.Mock(side_effect=[4, 3])
+
+        def get_dibits(dc, bitmap, start, lines, data, info, usage):
+            del dc, bitmap, start, info, usage
+            screen_selector.ctypes.memmove(
+                data,
+                bytes((10, 20, 30, 0)),
+                4,
+            )
+            return lines
+
+        user32 = SimpleNamespace(
+            GetDC=mock.Mock(return_value=1),
+            ReleaseDC=mock.Mock(return_value=1),
+        )
+        gdi32 = SimpleNamespace(
+            CreateCompatibleDC=mock.Mock(return_value=2),
+            CreateCompatibleBitmap=mock.Mock(return_value=3),
+            SelectObject=select_object,
+            BitBlt=mock.Mock(return_value=1),
+            GetDIBits=mock.Mock(side_effect=get_dibits),
+            DeleteObject=mock.Mock(return_value=1),
+            DeleteDC=mock.Mock(return_value=1),
+        )
+        windll = SimpleNamespace(user32=user32, gdi32=gdi32)
+
+        with mock.patch.object(
+            screen_selector.ctypes,
+            "windll",
+            windll,
+            create=True,
+        ):
+            imagen = screen_selector._capturar_escritorio_virtual(
+                -10,
+                -20,
+                1,
+                1,
+            )
+
+        self.assertEqual(imagen.size, (1, 1))
+        self.assertEqual(imagen.getpixel((0, 0)), (30, 20, 10))
+        gdi32.BitBlt.assert_called_once_with(
+            2,
+            0,
+            0,
+            1,
+            1,
+            1,
+            -10,
+            -20,
+            screen_selector.SRCCOPY | screen_selector.CAPTUREBLT,
+        )
+        self.assertEqual(select_object.call_count, 2)
+        user32.ReleaseDC.assert_called_once_with(None, 1)
+
 
 class RollingAudioBufferTests(unittest.TestCase):
     def test_shortening_duration_discards_old_pcm_immediately(self) -> None:
