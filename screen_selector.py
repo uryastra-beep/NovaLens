@@ -40,6 +40,43 @@ TRANSPARENT = 1
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 PROCESS_PER_MONITOR_DPI_AWARE = 2
 
+SRCCOPY = 0x00CC0020
+CAPTUREBLT = 0x40000000
+DIB_RGB_COLORS = 0
+BI_RGB = 0
+
+
+class BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", ctypes.c_uint32),
+        ("biWidth", ctypes.c_int32),
+        ("biHeight", ctypes.c_int32),
+        ("biPlanes", ctypes.c_uint16),
+        ("biBitCount", ctypes.c_uint16),
+        ("biCompression", ctypes.c_uint32),
+        ("biSizeImage", ctypes.c_uint32),
+        ("biXPelsPerMeter", ctypes.c_int32),
+        ("biYPelsPerMeter", ctypes.c_int32),
+        ("biClrUsed", ctypes.c_uint32),
+        ("biClrImportant", ctypes.c_uint32),
+    ]
+
+
+class RGBQUAD(ctypes.Structure):
+    _fields_ = [
+        ("rgbBlue", ctypes.c_ubyte),
+        ("rgbGreen", ctypes.c_ubyte),
+        ("rgbRed", ctypes.c_ubyte),
+        ("rgbReserved", ctypes.c_ubyte),
+    ]
+
+
+class BITMAPINFO(ctypes.Structure):
+    _fields_ = [
+        ("bmiHeader", BITMAPINFOHEADER),
+        ("bmiColors", RGBQUAD * 1),
+    ]
+
 
 def normalizar_region(
     inicio: tuple[int, int],
@@ -112,15 +149,147 @@ def _preparar_dpi() -> None:
         pass
 
 
+def _capturar_escritorio_virtual(
+    izquierda: int,
+    arriba: int,
+    ancho: int,
+    alto: int,
+) -> Image.Image:
+    """Capture the exact Win32 virtual desktop without Pillow DPI scaling."""
+    user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+
+    user32.GetDC.restype = wintypes.HDC
+    user32.GetDC.argtypes = [wintypes.HWND]
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateCompatibleBitmap.restype = wintypes.HANDLE
+    gdi32.CreateCompatibleBitmap.argtypes = [
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    gdi32.SelectObject.restype = wintypes.HANDLE
+    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HANDLE]
+    gdi32.BitBlt.restype = wintypes.BOOL
+    gdi32.BitBlt.argtypes = [
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.DWORD,
+    ]
+    gdi32.GetDIBits.restype = ctypes.c_int
+    gdi32.GetDIBits.argtypes = [
+        wintypes.HDC,
+        wintypes.HANDLE,
+        wintypes.UINT,
+        wintypes.UINT,
+        wintypes.LPVOID,
+        ctypes.POINTER(BITMAPINFO),
+        wintypes.UINT,
+    ]
+    gdi32.DeleteObject.argtypes = [wintypes.HANDLE]
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+
+    dc_pantalla = user32.GetDC(None)
+    if not dc_pantalla:
+        raise ctypes.WinError()
+
+    dc_memoria = None
+    bitmap = None
+    bitmap_anterior = None
+    bitmap_seleccionado = False
+
+    try:
+        dc_memoria = gdi32.CreateCompatibleDC(dc_pantalla)
+        if not dc_memoria:
+            raise ctypes.WinError()
+
+        bitmap = gdi32.CreateCompatibleBitmap(dc_pantalla, ancho, alto)
+        if not bitmap:
+            raise ctypes.WinError()
+
+        bitmap_anterior = gdi32.SelectObject(dc_memoria, bitmap)
+        if not bitmap_anterior:
+            raise ctypes.WinError()
+        bitmap_seleccionado = True
+
+        if not gdi32.BitBlt(
+            dc_memoria,
+            0,
+            0,
+            ancho,
+            alto,
+            dc_pantalla,
+            izquierda,
+            arriba,
+            SRCCOPY | CAPTUREBLT,
+        ):
+            raise ctypes.WinError()
+
+        # GetDIBits requires the bitmap not to be selected into a DC.
+        if not gdi32.SelectObject(dc_memoria, bitmap_anterior):
+            raise ctypes.WinError()
+        bitmap_seleccionado = False
+
+        informacion = BITMAPINFO()
+        informacion.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        informacion.bmiHeader.biWidth = ancho
+        # A negative height makes GDI return rows from top to bottom.
+        informacion.bmiHeader.biHeight = -alto
+        informacion.bmiHeader.biPlanes = 1
+        informacion.bmiHeader.biBitCount = 32
+        informacion.bmiHeader.biCompression = BI_RGB
+
+        datos = ctypes.create_string_buffer(ancho * alto * 4)
+        filas = gdi32.GetDIBits(
+            dc_pantalla,
+            bitmap,
+            0,
+            alto,
+            datos,
+            ctypes.byref(informacion),
+            DIB_RGB_COLORS,
+        )
+
+        if filas != alto:
+            raise ctypes.WinError()
+
+        return Image.frombytes(
+            "RGB",
+            (ancho, alto),
+            datos.raw,
+            "raw",
+            "BGRX",
+            ancho * 4,
+            1,
+        )
+    finally:
+        if dc_memoria and bitmap_anterior and bitmap_seleccionado:
+            gdi32.SelectObject(dc_memoria, bitmap_anterior)
+        if bitmap:
+            gdi32.DeleteObject(bitmap)
+        if dc_memoria:
+            gdi32.DeleteDC(dc_memoria)
+        user32.ReleaseDC(None, dc_pantalla)
+
+
 def seleccionar_region_pantalla_jpeg(
     instruccion: str,
     cancelar: str,
 ) -> bytes | None:
     """Display a native Windows selector and return only the chosen region."""
     _preparar_dpi()
-    captura = ImageGrab.grab(all_screens=True)
 
     if os.name != "nt":
+        captura = ImageGrab.grab(all_screens=True)
         return _imagen_a_jpeg(captura)
 
     user32 = ctypes.windll.user32
@@ -133,14 +302,23 @@ def seleccionar_region_pantalla_jpeg(
     alto_virtual = int(user32.GetSystemMetrics(SM_CYVIRTUALSCREEN))
 
     if ancho_virtual <= 0 or alto_virtual <= 0:
-        return _imagen_a_jpeg(captura)
+        raise RuntimeError("Windows returned an invalid virtual-screen size.")
+
+    captura = _capturar_escritorio_virtual(
+        izquierda_virtual,
+        arriba_virtual,
+        ancho_virtual,
+        alto_virtual,
+    )
+
+    if captura.size != (ancho_virtual, alto_virtual):
+        raise RuntimeError(
+            "The Windows desktop capture does not match the selector size."
+        )
 
     oscura = ImageEnhance.Brightness(captura.convert("RGB")).enhance(0.32)
     dib_oscura = ImageWin.Dib(oscura)
     dib_original = ImageWin.Dib(captura.convert("RGB"))
-
-    escala_x = captura.width / ancho_virtual
-    escala_y = captura.height / alto_virtual
 
     seleccion: tuple[int, int, int, int] | None = None
     inicio: tuple[int, int] | None = None
@@ -343,13 +521,7 @@ def seleccionar_region_pantalla_jpeg(
 
                 if seleccion is not None:
                     izq, sup, der, inf = seleccion
-                    origen = (
-                        round(izq * escala_x),
-                        round(sup * escala_y),
-                        round(der * escala_x),
-                        round(inf * escala_y),
-                    )
-                    dib_original.draw(dc, seleccion, origen)
+                    dib_original.draw(dc, seleccion, seleccion)
 
                     lapiz = gdi32.CreatePen(
                         PS_SOLID,
@@ -446,11 +618,4 @@ def seleccionar_region_pantalla_jpeg(
     if cancelado or seleccion is None:
         return None
 
-    izq, sup, der, inf = seleccion
-    caja_captura = (
-        round(izq * escala_x),
-        round(sup * escala_y),
-        round(der * escala_x),
-        round(inf * escala_y),
-    )
-    return _imagen_a_jpeg(captura.crop(caja_captura))
+    return _imagen_a_jpeg(captura.crop(seleccion))
