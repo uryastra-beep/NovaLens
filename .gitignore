@@ -1,5 +1,8 @@
 # API key y variables privadas
 .env
+.env.tmp
+.env.*
+!.env.example
 
 # Configuración local del usuario
 config.json
