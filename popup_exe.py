@@ -634,7 +634,8 @@ async def main(page: ft.Page) -> None:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    zona_respuesta = ft.Column(
+    # Keep long answers inside a dedicated scroll viewport.
+    zona_respuesta = ft.ListView(
         controls=[texto_respuesta],
         expand=True,
         scroll=ft.ScrollMode.AUTO,
@@ -743,6 +744,7 @@ async def main(page: ft.Page) -> None:
     )
 
     detector_interacciones = ft.GestureDetector(
+        expand=True,
         content=popup,
         on_tap_down=registrar_interaccion,
     )
