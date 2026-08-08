@@ -14,13 +14,16 @@ import bubble_layout
 import config_manager
 import main as novalens_main
 import native_clickthrough
+import popup_layout
 import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
 from popup_layout import (
     apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
+    logical_to_physical_geometry,
     popup_viewport_matches,
+    snap_native_window_geometry,
 )
 from reporting import build_bug_report_url, redact_secrets
 from rolling_audio import RollingAudioBuffer
@@ -541,7 +544,7 @@ class PopupLayoutTests(unittest.TestCase):
         self.assertEqual(window.min_width, 720)
         self.assertEqual(window.max_width, 720)
         self.assertEqual(window.min_height, 165)
-        self.assertEqual(window.max_height, 165)
+        self.assertEqual(window.max_height, 378)
         self.assertEqual(window.width, 720)
         self.assertEqual(window.height, 165)
 
@@ -558,10 +561,56 @@ class PopupLayoutTests(unittest.TestCase):
 
         self.assertEqual(window.min_width, 1904)
         self.assertEqual(window.max_width, 1904)
-        self.assertEqual(window.min_height, 378)
+        self.assertEqual(window.min_height, 165)
         self.assertEqual(window.max_height, 378)
         self.assertEqual(window.width, 1904)
         self.assertEqual(window.height, 378)
+
+    def test_logical_popup_geometry_is_scaled_for_native_windows(self) -> None:
+        self.assertEqual(
+            logical_to_physical_geometry(8, 16, 1520, 165, 120),
+            (10, 20, 1900, 206),
+        )
+
+    def test_native_popup_resize_is_applied_once_without_animation(self) -> None:
+        find_window = mock.Mock(return_value=123)
+        set_window_pos = mock.Mock(return_value=True)
+        set_thread_dpi = mock.Mock(return_value=456)
+        user32 = SimpleNamespace(
+            FindWindowW=find_window,
+            SetThreadDpiAwarenessContext=set_thread_dpi,
+            GetDpiForWindow=mock.Mock(return_value=120),
+            SetWindowPos=set_window_pos,
+            RedrawWindow=mock.Mock(return_value=True),
+        )
+
+        with (
+            patch.object(popup_layout.os, "name", "nt"),
+            patch.object(
+                popup_layout.ctypes,
+                "windll",
+                SimpleNamespace(user32=user32),
+                create=True,
+            ),
+        ):
+            applied = snap_native_window_geometry(
+                "Nova Lens Text Popup",
+                8,
+                16,
+                1520,
+                165,
+            )
+
+        self.assertTrue(applied)
+        set_window_pos.assert_called_once_with(
+            123,
+            None,
+            10,
+            20,
+            1900,
+            206,
+            popup_layout.SWP_NOZORDER | popup_layout.SWP_NOACTIVATE,
+        )
 
 
 class NativeClickThroughTests(unittest.TestCase):

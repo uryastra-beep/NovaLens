@@ -20,11 +20,11 @@ from config_manager import (
     color_con_transparencia,
 )
 from localization import tr
-from native_clickthrough import set_native_click_through
 from popup_layout import (
     apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
     popup_viewport_matches,
+    wait_and_snap_native_window_geometry,
 )
 from reporting import build_bug_report_url
 
@@ -66,6 +66,7 @@ DURACION_SALIDA_MS = 220
 RETRASO_OCULTAR_POR_BLUR = 0.18
 PROTECCION_BLUR_AL_ABRIR = 0.70
 RESPUESTA_INICIAL = tr("popup_ready")
+TITULO_VENTANA = "Nova Lens Text Popup"
 
 
 class RECT(ctypes.Structure):
@@ -200,7 +201,9 @@ async def main(page: ft.Page) -> None:
     popup: ft.Container
     zona_respuesta: ft.ListView | None = None
 
-    def aplicar_geometria(altura: int | float) -> tuple[int, int]:
+    def calcular_geometria(
+        altura: int | float,
+    ) -> tuple[int, int, int, int]:
         altura_segura = limitar_altura(altura)
         izquierda, arriba, ancho, alto = obtener_area_trabajo()
         izquierda_segura, ancho_seguro = calculate_popup_horizontal_geometry(
@@ -218,27 +221,63 @@ async def main(page: ft.Page) -> None:
         else:
             arriba_seguro = arriba + MARGEN_PANTALLA
 
-        apply_popup_window_geometry(
-            page.window,
+        if zona_respuesta is not None:
+            zona_respuesta.height = calcular_altura_respuesta(altura_segura)
+
+        return (
             izquierda_segura,
             arriba_seguro,
             ancho_seguro,
             altura_segura,
-            ALTURA_MINIMA,
-            ALTURA_MAXIMA,
         )
-
-        if zona_respuesta is not None:
-            zona_respuesta.height = calcular_altura_respuesta(altura_segura)
-
-        return ancho_seguro, altura_segura
 
     async def sincronizar_geometria(
         altura: int | float,
         intentos: int = 6,
     ) -> tuple[int, int, bool]:
-        """Wait until Flutter has adopted the requested native window bounds."""
-        ancho_esperado, altura_esperada = aplicar_geometria(altura)
+        """Apply one non-animated Win32 resize and wait for Flutter metrics."""
+        (
+            izquierda_esperada,
+            arriba_esperado,
+            ancho_esperado,
+            altura_esperada,
+        ) = calcular_geometria(altura)
+        page.update()
+
+        geometria_nativa = await wait_and_snap_native_window_geometry(
+            TITULO_VENTANA,
+            izquierda_esperada,
+            arriba_esperado,
+            ancho_esperado,
+            altura_esperada,
+        )
+
+        if geometria_nativa:
+            for _ in range(max(1, int(intentos))):
+                await asyncio.sleep(0.025)
+                if popup_viewport_matches(
+                    page.width,
+                    page.height,
+                    ancho_esperado,
+                    altura_esperada,
+                ):
+                    break
+
+            # SetWindowPos already delivered one WM_SIZE to Flutter. Do not
+            # restart Flet's animated resize when its metrics arrive late.
+            return ancho_esperado, altura_esperada, True
+
+        # Non-Windows and unusual clients without a discoverable HWND retain
+        # the normal Flet geometry path.
+        apply_popup_window_geometry(
+            page.window,
+            izquierda_esperada,
+            arriba_esperado,
+            ancho_esperado,
+            altura_esperada,
+            ALTURA_MINIMA,
+            ALTURA_MAXIMA,
+        )
         page.update()
 
         for _ in range(max(1, int(intentos))):
@@ -250,9 +289,6 @@ async def main(page: ft.Page) -> None:
                 altura_esperada,
             ):
                 return ancho_esperado, altura_esperada, True
-
-            ancho_esperado, altura_esperada = aplicar_geometria(altura)
-            page.update()
 
         geometria_valida = popup_viewport_matches(
             page.width,
@@ -314,7 +350,6 @@ async def main(page: ft.Page) -> None:
         ocultando = False
         ventana_enfocada = False
         page.window.ignore_mouse_events = True
-        set_native_click_through(True)
         page.update()
 
     async def ocultar_inmediatamente() -> None:
@@ -334,7 +369,6 @@ async def main(page: ft.Page) -> None:
         ventana_enfocada = False
         popup.opacity = 0
         page.window.ignore_mouse_events = True
-        set_native_click_through(True)
         page.update()
 
     async def cierre_automatico() -> None:
@@ -384,7 +418,6 @@ async def main(page: ft.Page) -> None:
         # Keep the native window transparent and non-interactive until Flutter
         # confirms that its viewport matches the requested compact/normal size.
         page.window.ignore_mouse_events = True
-        set_native_click_through(True)
         page.update()
 
         _, _, geometria_valida = await sincronizar_geometria(
@@ -399,13 +432,11 @@ async def main(page: ft.Page) -> None:
             popup_visible = False
             ventana_enfocada = False
             page.window.ignore_mouse_events = True
-            set_native_click_through(True)
             popup.opacity = 0
             page.update()
             return
 
         page.window.ignore_mouse_events = False
-        set_native_click_through(False)
         page.window.focused = True
         popup.opacity = 1
         page.update()
@@ -562,7 +593,6 @@ async def main(page: ft.Page) -> None:
 
             if popup_visible:
                 page.window.ignore_mouse_events = False
-                set_native_click_through(False)
                 popup.opacity = 1
 
             page.update()
@@ -655,7 +685,7 @@ async def main(page: ft.Page) -> None:
 
             await asyncio.sleep(0.10)
 
-    page.title = "Nova Lens"
+    page.title = TITULO_VENTANA
     page.padding = 0
     page.spacing = 0
     page.bgcolor = ft.Colors.TRANSPARENT
@@ -672,13 +702,7 @@ async def main(page: ft.Page) -> None:
     # whose pixels are vertically compressed while hit-testing stays correct.
     page.window.opacity = 1.0
     page.window.ignore_mouse_events = True
-    set_native_click_through(True)
     page.window.on_event = evento_ventana
-
-    # Configure the compact viewport before Flet lays out the first frame.
-    # Applying it only after page.add() lets Windows briefly keep Flet's
-    # default full-screen width and compress the compact popup vertically.
-    aplicar_geometria(altura_actual)
 
     texto_respuesta = ft.Text(
         limpiar_markdown_basico(RESPUESTA_INICIAL),
@@ -842,7 +866,6 @@ async def main(page: ft.Page) -> None:
     )
 
     page.add(detector_interacciones)
-    aplicar_geometria(altura_actual)
     page.update()
 
     try:
@@ -850,13 +873,13 @@ async def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    # Create the native window invisibly, then let Flutter confirm the real
-    # viewport before commands are allowed to expose the popup.
+    # Keep the 1280x720 client hidden while SetWindowPos snaps it directly to
+    # the popup viewport. This bypasses Flet's animated Windows resize, which
+    # was the source of the compressed raster with correct hit boxes.
+    await sincronizar_geometria(altura_actual)
     page.window.visible = True
     page.window.ignore_mouse_events = True
-    set_native_click_through(True)
     page.update()
-    await sincronizar_geometria(altura_actual)
 
     asyncio.create_task(escuchar_comandos())
 

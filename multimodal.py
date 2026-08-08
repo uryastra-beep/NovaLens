@@ -13,11 +13,19 @@ from pathlib import Path
 import flet as ft
 
 from backend import analizar_captura_pantalla, transcribir_y_responder_audio
+from bubble_layout import (
+    convertir_rectangulo_a_logico,
+    obtener_escala_dpi_sistema,
+)
 from config_manager import (
     cargar_configuracion,
     color_con_transparencia,
 )
 from localization import tr
+from popup_layout import (
+    apply_popup_window_geometry,
+    wait_and_snap_native_window_geometry,
+)
 from screen_selector import seleccionar_region_pantalla_jpeg
 
 
@@ -63,8 +71,8 @@ ALTURA_MINIMA = 150
 ALTURA_MAXIMA = 420
 ALTURA_CONTROLES_FIJOS = 104
 ALTURA_RESPUESTA_MINIMA = 32
-DURACION_ENTRADA_MS = 420
 DURACION_SALIDA_MS = 520
+TITULO_VENTANA = f"Nova Lens {MODO.title()} Popup"
 
 
 class RECT(ctypes.Structure):
@@ -76,19 +84,7 @@ class RECT(ctypes.Structure):
     ]
 
 
-def preparar_dpi() -> None:
-    if os.name != "nt":
-        return
-
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
-
-
 def obtener_area_trabajo() -> tuple[int, int, int, int]:
-    preparar_dpi()
-
     if os.name == "nt":
         rect = RECT()
 
@@ -101,20 +97,22 @@ def obtener_area_trabajo() -> tuple[int, int, int, int]:
             )
 
             if resultado:
-                return (
+                return convertir_rectangulo_a_logico(
                     int(rect.left),
                     int(rect.top),
                     int(rect.right - rect.left),
                     int(rect.bottom - rect.top),
+                    obtener_escala_dpi_sistema(),
                 )
         except Exception:
             pass
 
-        return (
+        return convertir_rectangulo_a_logico(
             0,
             0,
             int(ctypes.windll.user32.GetSystemMetrics(0)),
             int(ctypes.windll.user32.GetSystemMetrics(1)),
+            obtener_escala_dpi_sistema(),
         )
 
     return 0, 0, 1280, 720
@@ -192,7 +190,7 @@ async def main(page: ft.Page) -> None:
     izquierda, arriba, ancho_area, alto_area = obtener_area_trabajo()
     ancho_popup = max(420, ancho_area - MARGEN_PANTALLA * 2)
 
-    page.title = "Nova Lens"
+    page.title = TITULO_VENTANA
     page.padding = 0
     page.spacing = 0
     page.bgcolor = ft.Colors.TRANSPARENT
@@ -203,23 +201,54 @@ async def main(page: ft.Page) -> None:
     page.window.skip_task_bar = True
     page.window.resizable = False
     page.window.shadow = False
-    page.window.width = ancho_popup
-    page.window.height = ALTURA_MINIMA
-    page.window.min_height = ALTURA_MINIMA
-    page.window.max_height = ALTURA_MAXIMA
-    page.window.left = izquierda + MARGEN_PANTALLA
     page.window.visible = False
-
-    if POSICION_POPUP == "bottom":
-        page.window.top = (
-            arriba + alto_area - ALTURA_MINIMA - MARGEN_PANTALLA
-        )
-    else:
-        page.window.top = arriba + MARGEN_PANTALLA
 
     respuesta_actual = ""
     cerrando = False
     ultima_interaccion = time.monotonic()
+    altura_ventana_actual = ALTURA_MINIMA
+
+    def geometria_popup(altura: int | float) -> tuple[int, int, int, int]:
+        altura_segura = max(
+            ALTURA_MINIMA,
+            min(int(round(float(altura))), ALTURA_MAXIMA),
+        )
+        top = (
+            arriba + alto_area - altura_segura - MARGEN_PANTALLA
+            if POSICION_POPUP == "bottom"
+            else arriba + MARGEN_PANTALLA
+        )
+        return (
+            izquierda + MARGEN_PANTALLA,
+            top,
+            ancho_popup,
+            altura_segura,
+        )
+
+    async def ajustar_geometria(altura: int | float) -> int:
+        left, top, width, height = geometria_popup(altura)
+        if await wait_and_snap_native_window_geometry(
+            TITULO_VENTANA,
+            left,
+            top,
+            width,
+            height,
+        ):
+            await asyncio.sleep(0.05)
+            return height
+
+        apply_popup_window_geometry(
+            page.window,
+            left,
+            top,
+            width,
+            height,
+            ALTURA_MINIMA,
+            ALTURA_MAXIMA,
+        )
+        page.update()
+        await asyncio.sleep(0.05)
+        return height
 
     def registrar_interaccion(e=None) -> None:
         nonlocal ultima_interaccion
@@ -282,6 +311,7 @@ async def main(page: ft.Page) -> None:
         await cerrar()
 
     async def mostrar_ventana() -> None:
+        await ajustar_geometria(altura_ventana_actual)
         page.window.visible = True
         page.window.focused = True
         page.update()
@@ -292,19 +322,15 @@ async def main(page: ft.Page) -> None:
             pass
 
         popup.opacity = 0
-        popup.offset = ft.Offset(
-            0,
-            -0.75 if POSICION_POPUP == "top" else 0.75,
-        )
         popup.update()
         await asyncio.sleep(0.04)
         popup.opacity = 1
-        popup.offset = ft.Offset(0, 0)
         popup.update()
         registrar_interaccion()
 
     async def actualizar_resultado(texto: str) -> None:
         nonlocal respuesta_actual
+        nonlocal altura_ventana_actual
 
         respuesta_actual = (
             (texto or "").strip()
@@ -315,17 +341,14 @@ async def main(page: ft.Page) -> None:
         indicador.visible = False
         mensaje_estado.value = tr("response_ready")
 
-        nueva_altura = calcular_altura(limpio, ancho_popup)
-        page.window.height = nueva_altura
-        zona_respuesta.height = calcular_altura_respuesta(nueva_altura)
-
-        if POSICION_POPUP == "bottom":
-            page.window.top = (
-                arriba + alto_area - nueva_altura - MARGEN_PANTALLA
-            )
+        altura_ventana_actual = calcular_altura(limpio, ancho_popup)
+        zona_respuesta.height = calcular_altura_respuesta(
+            altura_ventana_actual
+        )
 
         registrar_interaccion()
         page.update()
+        await ajustar_geometria(altura_ventana_actual)
 
         try:
             await zona_respuesta.scroll_to(offset=0, duration=1)
@@ -401,17 +424,9 @@ async def main(page: ft.Page) -> None:
             spacing=7,
         ),
         opacity=0,
-        offset=ft.Offset(
-            0,
-            -0.75 if POSICION_POPUP == "top" else 0.75,
-        ),
         animate_opacity=ft.Animation(
             duration=DURACION_SALIDA_MS,
             curve=ft.AnimationCurve.EASE_OUT,
-        ),
-        animate_offset=ft.Animation(
-            duration=DURACION_ENTRADA_MS,
-            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
         ),
     )
 
@@ -422,6 +437,13 @@ async def main(page: ft.Page) -> None:
         )
     )
     page.update()
+
+    try:
+        await page.window.wait_until_ready_to_show()
+    except Exception:
+        pass
+
+    await ajustar_geometria(altura_ventana_actual)
 
     try:
         if MODO == "screen":

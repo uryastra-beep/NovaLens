@@ -131,7 +131,7 @@ $packArguments = @(
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
-    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "audio_indicator", "bubble_layout", "control_bubble", "screen_selector", "native_clickthrough", "localization", "app_info", "popup_layout", "reporting",
+    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "audio_indicator", "bubble_layout", "control_bubble", "screen_selector", "localization", "app_info", "popup_layout", "reporting",
     "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;.", "audio_indicator.py;.", "control_bubble.py;."
 )
 

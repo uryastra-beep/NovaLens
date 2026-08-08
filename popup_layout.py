@@ -1,12 +1,162 @@
 from __future__ import annotations
 
+import asyncio
+import ctypes
 import math
+import os
 from typing import Any
 
 
 DISPLAY_MODES = {"normal", "compact"}
 COMPACT_WIDTH = 720
 MINIMUM_WIDTH = 420
+
+SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
+RDW_INVALIDATE = 0x0001
+RDW_ALLCHILDREN = 0x0080
+RDW_UPDATENOW = 0x0100
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+
+
+def logical_to_physical_geometry(
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    dpi: int,
+) -> tuple[int, int, int, int]:
+    """Convert Flet virtual pixels to Win32 pixels for one monitor DPI."""
+    try:
+        scale = max(96, int(dpi)) / 96.0
+    except (TypeError, ValueError, OverflowError):
+        scale = 1.0
+
+    return (
+        round(int(left) * scale),
+        round(int(top) * scale),
+        max(1, round(int(width) * scale)),
+        max(1, round(int(height) * scale)),
+    )
+
+
+def snap_native_window_geometry(
+    title: str,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+) -> bool:
+    """Resize a Flet window instantly, bypassing its animated size change.
+
+    Flet's Windows client starts every desktop surface at 1280x720 and its
+    public size setter animates the transition. A large animated transition to
+    a short transparent popup can leave Flutter's raster surface compressed
+    while hit testing already uses the final viewport. SetWindowPos delivers
+    one WM_SIZE instead and keeps the rendered surface and input geometry in
+    the same coordinate system.
+    """
+    if os.name != "nt" or not str(title or "").strip():
+        return False
+
+    user32 = ctypes.windll.user32
+    previous_context = None
+
+    try:
+        find_window = user32.FindWindowW
+        find_window.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        find_window.restype = ctypes.c_void_p
+        hwnd = find_window(None, str(title))
+        if not hwnd:
+            return False
+
+        try:
+            set_thread_dpi = user32.SetThreadDpiAwarenessContext
+            set_thread_dpi.argtypes = [ctypes.c_void_p]
+            set_thread_dpi.restype = ctypes.c_void_p
+            previous_context = set_thread_dpi(
+                ctypes.c_void_p(
+                    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+                )
+            )
+        except Exception:
+            previous_context = None
+
+        try:
+            dpi = int(user32.GetDpiForWindow(hwnd))
+        except Exception:
+            try:
+                dpi = int(user32.GetDpiForSystem())
+            except Exception:
+                dpi = 96
+
+        native_geometry = logical_to_physical_geometry(
+            left,
+            top,
+            width,
+            height,
+            dpi,
+        )
+
+        set_window_pos = user32.SetWindowPos
+        set_window_pos.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        set_window_pos.restype = ctypes.c_bool
+        applied = bool(
+            set_window_pos(
+                hwnd,
+                None,
+                *native_geometry,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        )
+
+        if applied:
+            try:
+                user32.RedrawWindow(
+                    hwnd,
+                    None,
+                    None,
+                    RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+                )
+            except Exception:
+                pass
+
+        return applied
+
+    except Exception:
+        return False
+    finally:
+        if previous_context:
+            try:
+                user32.SetThreadDpiAwarenessContext(previous_context)
+            except Exception:
+                pass
+
+
+async def wait_and_snap_native_window_geometry(
+    title: str,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    attempts: int = 40,
+    interval: float = 0.025,
+) -> bool:
+    """Wait for Flet's HWND and apply one non-animated native geometry."""
+    for _ in range(max(1, int(attempts))):
+        if snap_native_window_geometry(title, left, top, width, height):
+            return True
+        await asyncio.sleep(max(0.01, float(interval)))
+
+    return False
 
 
 def apply_popup_window_geometry(
@@ -36,15 +186,12 @@ def apply_popup_window_geometry(
     window.maximized = False
     window.maximizable = False
     window.resizable = False
-    # Pin both dimensions to the requested viewport. Leaving a range here
-    # allows Windows/Flet to restore an older hidden-window size that is still
-    # technically valid (for example 720x378 instead of 720x165). Flutter then
-    # lays out the expanded popup against one surface while Windows displays
-    # another, which clips the UI into a thin strip.
+    # Width is fixed for each popup process. Height remains within a stable
+    # range so response changes do not repeatedly invert equal min/max limits.
     window.min_width = safe_width
     window.max_width = safe_width
-    window.min_height = safe_height
-    window.max_height = safe_height
+    window.min_height = safe_minimum_height
+    window.max_height = safe_maximum_height
     window.width = safe_width
     window.height = safe_height
     window.left = safe_left
