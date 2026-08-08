@@ -41,6 +41,21 @@ TRADUCCIONES = {
         "window_title": "Nova Lens Settings",
         "title": "Nova Lens Settings",
         "subtitle": "Customize the popup and connect your own Gemini account.",
+        "welcome_title": "Welcome to Nova Lens",
+        "welcome_subtitle": "Let's prepare your desktop assistant. Complete the steps below, review the remaining settings, and save your changes.",
+        "welcome_card_title": "First-time setup",
+        "welcome_card_sub": "Everything Nova Lens needs is available in this Settings window.",
+        "welcome_required": "Required",
+        "welcome_optional": "Customize",
+        "welcome_step_key": "Connect Google Gemini",
+        "welcome_step_key_sub": "Paste your personal Gemini API key. Nova Lens stores it only on this device.",
+        "welcome_step_interface": "Choose your interface",
+        "welcome_step_interface_sub": "Select the language, colors, popup position, and normal or compact mode.",
+        "welcome_step_controls": "Set your controls",
+        "welcome_step_controls_sub": "Review text, screen, audio, Settings, and close shortcuts.",
+        "welcome_step_save": "Save and start",
+        "welcome_step_save_sub": "Press Save changes at the bottom. Nova Lens will remember this setup.",
+        "setup_complete": "Welcome setup complete. Nova Lens is ready to use.",
         "local": "Changes are stored locally on this device.",
         "language": "Language",
         "english": "English",
@@ -114,6 +129,21 @@ TRADUCCIONES = {
         "window_title": "Configuración de Nova Lens",
         "title": "Configuración de Nova Lens",
         "subtitle": "Personalizá el popup y conectá tu propia cuenta de Gemini.",
+        "welcome_title": "Bienvenido a Nova Lens",
+        "welcome_subtitle": "Preparemos tu asistente de escritorio. Completá los pasos, revisá las demás opciones y guardá los cambios.",
+        "welcome_card_title": "Configuración inicial",
+        "welcome_card_sub": "Todo lo que Nova Lens necesita está disponible en esta ventana de configuración.",
+        "welcome_required": "Obligatorio",
+        "welcome_optional": "Personalizar",
+        "welcome_step_key": "Conectá Google Gemini",
+        "welcome_step_key_sub": "Pegá tu API key personal de Gemini. Nova Lens la guarda únicamente en este dispositivo.",
+        "welcome_step_interface": "Elegí tu interfaz",
+        "welcome_step_interface_sub": "Seleccioná idioma, colores, posición y modo normal o compacto.",
+        "welcome_step_controls": "Configurá los controles",
+        "welcome_step_controls_sub": "Revisá los atajos de texto, pantalla, audio, configuración y cierre.",
+        "welcome_step_save": "Guardá y comenzá",
+        "welcome_step_save_sub": "Presioná Guardar cambios al final. Nova Lens recordará esta configuración.",
+        "setup_complete": "Configuración inicial completada. Nova Lens está listo para usarse.",
         "local": "Los cambios se guardan localmente en este dispositivo.",
         "language": "Idioma",
         "english": "Inglés",
@@ -204,6 +234,63 @@ def tarjeta(titulo: str, subtitulo: str, controles: list[ft.Control]) -> ft.Cont
     )
 
 
+def paso_bienvenida(
+    icono: str,
+    titulo: str,
+    descripcion: str,
+    etiqueta: str,
+    obligatorio: bool = False,
+) -> ft.Container:
+    return ft.Container(
+        width=370,
+        bgcolor=PANEL_SECUNDARIO,
+        border=ft.Border.all(1, ACENTO if obligatorio else BORDE),
+        border_radius=14,
+        padding=14,
+        content=ft.Row(
+            controls=[
+                ft.Container(
+                    width=42,
+                    height=42,
+                    bgcolor=ACENTO if obligatorio else PANEL,
+                    border_radius=12,
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Icon(icono, color=TEXTO, size=22),
+                ),
+                ft.Column(
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Text(
+                                    titulo,
+                                    color=TEXTO,
+                                    weight=ft.FontWeight.BOLD,
+                                    expand=True,
+                                ),
+                                ft.Text(
+                                    etiqueta,
+                                    size=10,
+                                    color=TEXTO,
+                                    bgcolor=ACENTO if obligatorio else BORDE,
+                                ),
+                            ],
+                        ),
+                        ft.Text(
+                            descripcion,
+                            size=11,
+                            color=TEXTO_SECUNDARIO,
+                        ),
+                    ],
+                    spacing=5,
+                    expand=True,
+                ),
+            ],
+            spacing=12,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        ),
+    )
+
+
 async def main(page: ft.Page) -> None:
     archivo_desbloqueo = Path(sys.argv[1]) if len(sys.argv) >= 2 else None
     archivo_posicion_audio = Path(sys.argv[2]) if len(sys.argv) >= 3 else None
@@ -230,9 +317,99 @@ async def main(page: ft.Page) -> None:
     audio = config["audio"]
     atajos = config["hotkeys"]
     sistema = config["system"]
+    onboarding_activo = not bool(sistema.get("onboarding_completed", False))
     posiciones_guardadas = copy.deepcopy(config["bubble_positions"])
 
     estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
+    titulo_principal = ft.Text(
+        t["welcome_title"] if onboarding_activo else t["title"],
+        size=28,
+        weight=ft.FontWeight.BOLD,
+        color=TEXTO,
+    )
+    subtitulo_principal = ft.Text(
+        t["welcome_subtitle"] if onboarding_activo else t["subtitle"],
+        color=TEXTO_SECUNDARIO,
+    )
+    tarjeta_bienvenida = ft.Container(
+        visible=onboarding_activo,
+        bgcolor="#302018",
+        border=ft.Border.all(1, ACENTO),
+        border_radius=20,
+        padding=20,
+        content=ft.Column(
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color=ACENTO, size=30),
+                        ft.Column(
+                            controls=[
+                                ft.Text(
+                                    t["welcome_card_title"],
+                                    size=20,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=TEXTO,
+                                ),
+                                ft.Text(
+                                    t["welcome_card_sub"],
+                                    size=12,
+                                    color=TEXTO_SECUNDARIO,
+                                ),
+                            ],
+                            spacing=2,
+                            expand=True,
+                        ),
+                    ],
+                    spacing=12,
+                ),
+                ft.Row(
+                    controls=[
+                        paso_bienvenida(
+                            ft.Icons.KEY,
+                            t["welcome_step_key"],
+                            t["welcome_step_key_sub"],
+                            t["welcome_required"],
+                            True,
+                        ),
+                        paso_bienvenida(
+                            ft.Icons.PALETTE,
+                            t["welcome_step_interface"],
+                            t["welcome_step_interface_sub"],
+                            t["welcome_optional"],
+                        ),
+                        paso_bienvenida(
+                            ft.Icons.KEYBOARD,
+                            t["welcome_step_controls"],
+                            t["welcome_step_controls_sub"],
+                            t["welcome_optional"],
+                        ),
+                        paso_bienvenida(
+                            ft.Icons.CHECK_CIRCLE,
+                            t["welcome_step_save"],
+                            t["welcome_step_save_sub"],
+                            t["welcome_required"],
+                            True,
+                        ),
+                    ],
+                    wrap=True,
+                    spacing=12,
+                    run_spacing=12,
+                ),
+            ],
+            spacing=16,
+        ),
+    )
+
+    def actualizar_estado_onboarding(completado: bool) -> None:
+        nonlocal onboarding_activo
+        onboarding_activo = not bool(completado)
+        tarjeta_bienvenida.visible = onboarding_activo
+        titulo_principal.value = (
+            t["welcome_title"] if onboarding_activo else t["title"]
+        )
+        subtitulo_principal.value = (
+            t["welcome_subtitle"] if onboarding_activo else t["subtitle"]
+        )
 
     def campo(
         label: str,
@@ -513,6 +690,7 @@ async def main(page: ft.Page) -> None:
             "system": {
                 "start_with_windows": bool(inicio_windows.value),
                 "language": idioma.value or "english",
+                "onboarding_completed": True,
             },
         }
 
@@ -553,6 +731,7 @@ async def main(page: ft.Page) -> None:
         atajo_cerrar_alt.value = hk["close_alt"]
         inicio_windows.value = syscfg["start_with_windows"]
         idioma.value = syscfg["language"]
+        actualizar_estado_onboarding(syscfg["onboarding_completed"])
         for control in (
             transparencia,
             fuente,
@@ -570,6 +749,7 @@ async def main(page: ft.Page) -> None:
         actualizar_preview()
 
     def guardar(e: Any = None) -> None:
+        era_onboarding = onboarding_activo
         nueva = leer_formulario()
         if nueva is None:
             return
@@ -592,7 +772,11 @@ async def main(page: ft.Page) -> None:
         )
         eliminar_archivo_sesion(archivo_posicion_audio)
         eliminar_archivo_sesion(archivo_posicion_control)
-        mostrar_estado(t["saved"], True)
+        actualizar_estado_onboarding(True)
+        mostrar_estado(
+            t["setup_complete"] if era_onboarding else t["saved"],
+            True,
+        )
 
     def restaurar(e: Any = None) -> None:
         desbloquear_burbujas.value = False
@@ -631,8 +815,8 @@ async def main(page: ft.Page) -> None:
                 controls=[
                     ft.Column(
                         controls=[
-                            ft.Text(t["title"], size=28, weight=ft.FontWeight.BOLD, color=TEXTO),
-                            ft.Text(t["subtitle"], color=TEXTO_SECUNDARIO),
+                            titulo_principal,
+                            subtitulo_principal,
                         ],
                         spacing=2,
                         expand=True,
@@ -641,6 +825,7 @@ async def main(page: ft.Page) -> None:
                 ]
             ),
             estado,
+            tarjeta_bienvenida,
             tarjeta(t["language"], t["language_note"], [idioma]),
             tarjeta(
                 t["gemini"],

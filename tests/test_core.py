@@ -47,6 +47,7 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(config["hotkeys"]["audio"], "p+shift+a")
         self.assertEqual(config["appearance"]["display_mode"], "normal")
         self.assertEqual(config["system"]["language"], "english")
+        self.assertFalse(config["system"]["onboarding_completed"])
 
     def test_display_mode_and_multimodal_hotkeys_are_normalized(self) -> None:
         config = validar_configuracion(
@@ -77,6 +78,13 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertFalse(config["behavior"]["click_through_on_blur"])
         self.assertFalse(config["behavior"]["show_control_bubble"])
         self.assertFalse(config["system"]["start_with_windows"])
+
+    def test_onboarding_completion_is_normalized(self) -> None:
+        config = validar_configuracion(
+            {"system": {"onboarding_completed": "true"}}
+        )
+
+        self.assertTrue(config["system"]["onboarding_completed"])
 
     def test_audio_options_are_normalized_and_clamped(self) -> None:
         config = validar_configuracion(
@@ -140,6 +148,36 @@ class ConfigValidationTests(unittest.TestCase):
                     self.assertEqual(cargar_api_key(), "AQ.test-fallback")
             finally:
                 config_manager.ARCHIVO_ENV = previous_path
+
+
+class FirstLaunchTests(unittest.TestCase):
+    def test_incomplete_onboarding_opens_settings_even_with_a_key(self) -> None:
+        config = validar_configuracion({})
+        self.assertTrue(
+            novalens_main.debe_abrir_configuracion_inicial(
+                config,
+                "AQ.configured-key",
+            )
+        )
+
+    def test_completed_onboarding_with_a_key_skips_settings(self) -> None:
+        config = validar_configuracion(
+            {"system": {"onboarding_completed": True}}
+        )
+        self.assertFalse(
+            novalens_main.debe_abrir_configuracion_inicial(
+                config,
+                "AQ.configured-key",
+            )
+        )
+
+    def test_missing_key_always_opens_settings(self) -> None:
+        config = validar_configuracion(
+            {"system": {"onboarding_completed": True}}
+        )
+        self.assertTrue(
+            novalens_main.debe_abrir_configuracion_inicial(config, "")
+        )
 
 
 class GeminiRestParsingTests(unittest.TestCase):

@@ -1020,6 +1020,16 @@ def obtener_marca_config() -> int:
         return 0
 
 
+def debe_abrir_configuracion_inicial(
+    config: dict,
+    api_key: str,
+) -> bool:
+    return (
+        not bool((api_key or "").strip())
+        or not bool(config["system"].get("onboarding_completed", False))
+    )
+
+
 def vigilar_cambios_configuracion() -> None:
     ultima_marca = obtener_marca_config()
 
@@ -1097,7 +1107,7 @@ def main() -> None:
         daemon=True,
     ).start()
 
-    if not cargar_api_key():
+    if debe_abrir_configuracion_inicial(config, cargar_api_key()):
         threading.Timer(0.35, abrir_configuracion).start()
 
     try:

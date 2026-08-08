@@ -55,6 +55,7 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
     "system": {
         "start_with_windows": False,
         "language": "english",
+        "onboarding_completed": False,
     },
 }
 
@@ -205,6 +206,9 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
     sistema = _seccion_dict(config, "system")
     sistema["start_with_windows"] = normalizar_bool(
         sistema.get("start_with_windows"), False
+    )
+    sistema["onboarding_completed"] = normalizar_bool(
+        sistema.get("onboarding_completed"), False
     )
     idioma = str(sistema.get("language", "english")).strip().lower()
     sistema["language"] = idioma if idioma in {"english", "spanish"} else "english"

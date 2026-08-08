@@ -35,7 +35,9 @@ Windows may display a SmartScreen warning because Nova Lens is not currently cod
 
 Nova Lens uses a bring-your-own-key system. The application does not include a shared Gemini API key.
 
-On first launch, open Settings and paste your own Google Gemini API key. Nova Lens stores it locally at:
+On first launch, Nova Lens automatically opens Settings with a **Welcome to Nova Lens** setup guide. Add your Gemini API key, choose the interface and shortcuts, review the audio options, and press **Save changes**. The welcome guide is then marked as completed and normal launches continue in the background.
+
+Nova Lens stores the API key locally at:
 
 ```text
 %APPDATA%\NovaLens\.env
@@ -69,6 +71,7 @@ Neither file is included in the release package or committed to this repository.
 - Copy-response button.
 - Prevention of multiple Nova Lens background instances.
 - Graphical Settings interface.
+- Guided first-launch setup inside the Settings interface.
 - Custom colors, transparency, font size, border radius, margin, and popup position.
 - Configurable auto-hide timer.
 - Configurable microphone capture duration from 3 to 30 seconds.
@@ -298,6 +301,7 @@ To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -Sk
 - [x] Background execution.
 - [x] Single-instance protection.
 - [x] Graphical Settings interface.
+- [x] Guided first-launch onboarding.
 - [x] Custom appearance and text-popup hotkeys.
 - [x] Optional startup with Windows.
 - [x] Selectable screen-region analysis.
