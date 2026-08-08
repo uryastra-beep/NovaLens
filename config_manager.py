@@ -39,6 +39,10 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
         "duration_seconds": 10,
         "show_indicator": True,
     },
+    "bubble_positions": {
+        "audio": {"left": None, "top": None},
+        "control": {"left": None, "top": None},
+    },
     "hotkeys": {
         "open": "p+enter",
         "settings": "p+shift+enter",
@@ -79,6 +83,21 @@ def normalizar_bool(valor: Any, predeterminado: bool) -> bool:
         if texto in {"false", "0", "no", "off"}:
             return False
     return predeterminado
+
+
+def normalizar_coordenada(valor: Any) -> int | None:
+    if valor is None or isinstance(valor, bool):
+        return None
+
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    if not math.isfinite(numero):
+        return None
+
+    return max(-1_000_000, min(1_000_000, int(round(numero))))
 
 
 def es_color_hex(valor: Any) -> bool:
@@ -157,6 +176,16 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
     audio["show_indicator"] = normalizar_bool(
         audio.get("show_indicator"), True
     )
+
+    posiciones = _seccion_dict(config, "bubble_positions")
+    for nombre in ("audio", "control"):
+        posicion = posiciones.get(nombre)
+        if not isinstance(posicion, dict):
+            posicion = {}
+        posiciones[nombre] = {
+            "left": normalizar_coordenada(posicion.get("left")),
+            "top": normalizar_coordenada(posicion.get("top")),
+        }
 
     atajos = _seccion_dict(config, "hotkeys")
     for clave, predeterminado in CONFIGURACION_PREDETERMINADA["hotkeys"].items():

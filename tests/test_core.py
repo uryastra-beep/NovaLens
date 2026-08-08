@@ -9,6 +9,7 @@ from unittest import mock
 from unittest.mock import patch
 
 import config_manager
+import bubble_layout
 import main as novalens_main
 import screen_selector
 from backend import _extraer_texto_rest
@@ -24,6 +25,7 @@ class ConfigValidationTests(unittest.TestCase):
                 "appearance": "broken",
                 "behavior": None,
                 "audio": "broken",
+                "bubble_positions": "broken",
                 "hotkeys": [],
                 "system": "broken",
             }
@@ -35,6 +37,7 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertTrue(config["behavior"]["show_control_bubble"])
         self.assertTrue(config["audio"]["enabled"])
         self.assertEqual(config["audio"]["duration_seconds"], 10)
+        self.assertIsNone(config["bubble_positions"]["audio"]["left"])
         self.assertEqual(config["hotkeys"]["open"], "p+enter")
         self.assertEqual(config["system"]["language"], "english")
 
@@ -82,6 +85,25 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(config["appearance"]["font_size"], 16)
         self.assertEqual(config["appearance"]["transparency"], 60)
         self.assertFalse(config["system"]["start_with_windows"])
+
+    def test_bubble_positions_are_normalized_without_losing_negatives(self) -> None:
+        config = validar_configuracion(
+            {
+                "bubble_positions": {
+                    "audio": {"left": "-420", "top": 125.6},
+                    "control": {"left": "nan", "top": True},
+                }
+            }
+        )
+
+        self.assertEqual(
+            config["bubble_positions"]["audio"],
+            {"left": -420, "top": 126},
+        )
+        self.assertEqual(
+            config["bubble_positions"]["control"],
+            {"left": None, "top": None},
+        )
 
     def test_env_file_without_key_falls_back_to_process_environment(self) -> None:
         previous_path = config_manager.ARCHIVO_ENV
@@ -368,6 +390,43 @@ class ControlBubbleTests(unittest.TestCase):
 
         ocultar.assert_called_once_with()
         cerrar_app.assert_not_called()
+
+    def test_packaged_children_do_not_require_loose_source_files(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "missing_control_bubble.py"
+
+        with patch.object(
+            novalens_main.sys,
+            "frozen",
+            True,
+            create=True,
+        ):
+            self.assertTrue(novalens_main.archivo_hijo_disponible(missing))
+
+
+class BubbleLayoutTests(unittest.TestCase):
+    def test_saved_position_is_clamped_to_the_virtual_desktop(self) -> None:
+        self.assertEqual(
+            bubble_layout.resolver_posicion(
+                {"left": 9999, "top": -9999},
+                (10, 10),
+                (-1920, 0, 3840, 1080),
+                (200, 50),
+            ),
+            (1720, 0),
+        )
+
+    def test_position_draft_round_trip_is_atomic_and_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "position.json"
+            bubble_layout.escribir_posicion(path, -320.4, 88.8)
+
+            self.assertEqual(
+                bubble_layout.leer_posicion(path),
+                {"left": -320, "top": 89},
+            )
+
+            bubble_layout.eliminar_archivo_sesion(path)
+            self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

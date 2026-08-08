@@ -13,6 +13,10 @@ from typing import Callable
 
 import keyboard
 
+from bubble_layout import (
+    eliminar_archivo_sesion,
+    escribir_estado_desbloqueo,
+)
 from config_manager import (
     ARCHIVO_CONFIG,
     CONFIGURACION_PREDETERMINADA,
@@ -42,6 +46,18 @@ ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
 ARCHIVO_ACCIONES_BURBUJA = (
     Path(tempfile.gettempdir())
     / f"novalens_bubble_{os.getpid()}.json"
+)
+ARCHIVO_ESTADO_BURBUJAS = (
+    Path(tempfile.gettempdir())
+    / f"novalens_bubble_unlock_{os.getpid()}.json"
+)
+ARCHIVO_POSICION_AUDIO_BORRADOR = (
+    Path(tempfile.gettempdir())
+    / f"novalens_audio_position_{os.getpid()}.json"
+)
+ARCHIVO_POSICION_CONTROL_BORRADOR = (
+    Path(tempfile.gettempdir())
+    / f"novalens_control_position_{os.getpid()}.json"
 )
 
 ATAJO_PANTALLA = "p+shift+s"
@@ -88,6 +104,13 @@ mostrar_burbuja_control = True
 # ══════════════════════════════════════════════
 # CHILD PROCESS SHUTDOWN
 # ══════════════════════════════════════════════
+
+def archivo_hijo_disponible(ruta: Path) -> bool:
+    # PyInstaller bundles hidden modules inside NovaLens.exe. The launcher
+    # routes child modes by the requested basename, so a frozen build does not
+    # require the original .py data file to exist beside the executable.
+    return bool(getattr(sys, "frozen", False)) or ruta.exists()
+
 
 def terminar_arbol_proceso(
     proceso: subprocess.Popen | None,
@@ -212,6 +235,19 @@ def eliminar_archivos_control() -> None:
             ruta.unlink(missing_ok=True)
         except OSError:
             pass
+
+    for ruta in (
+        ARCHIVO_ESTADO_BURBUJAS,
+        ARCHIVO_POSICION_AUDIO_BORRADOR,
+        ARCHIVO_POSICION_CONTROL_BORRADOR,
+    ):
+        eliminar_archivo_sesion(ruta)
+
+
+def reiniciar_sesion_posiciones_burbujas() -> None:
+    escribir_estado_desbloqueo(ARCHIVO_ESTADO_BURBUJAS, False)
+    eliminar_archivo_sesion(ARCHIVO_POSICION_AUDIO_BORRADOR)
+    eliminar_archivo_sesion(ARCHIVO_POSICION_CONTROL_BORRADOR)
 
 
 # ══════════════════════════════════════════════
@@ -365,7 +401,7 @@ def iniciar_burbuja_control() -> bool:
     if (
         novalens_cerrando.is_set()
         or not mostrar_burbuja_control
-        or not ARCHIVO_BURBUJA_CONTROL.exists()
+        or not archivo_hijo_disponible(ARCHIVO_BURBUJA_CONTROL)
     ):
         return False
 
@@ -382,6 +418,8 @@ def iniciar_burbuja_control() -> bool:
                     sys.executable,
                     str(ARCHIVO_BURBUJA_CONTROL),
                     str(ARCHIVO_ACCIONES_BURBUJA),
+                    str(ARCHIVO_ESTADO_BURBUJAS),
+                    str(ARCHIVO_POSICION_CONTROL_BORRADOR),
                 ],
                 cwd=str(CARPETA_PROYECTO),
                 creationflags=creation_flags,
@@ -447,7 +485,7 @@ def iniciar_indicador_audio() -> bool:
 
     if (
         novalens_cerrando.is_set()
-        or not ARCHIVO_INDICADOR_AUDIO.exists()
+        or not archivo_hijo_disponible(ARCHIVO_INDICADOR_AUDIO)
     ):
         return False
 
@@ -469,6 +507,8 @@ def iniciar_indicador_audio() -> bool:
                     sys.executable,
                     str(ARCHIVO_INDICADOR_AUDIO),
                     str(duracion_buffer_audio),
+                    str(ARCHIVO_ESTADO_BURBUJAS),
+                    str(ARCHIVO_POSICION_AUDIO_BORRADOR),
                 ],
                 cwd=str(CARPETA_PROYECTO),
                 creationflags=creation_flags,
@@ -824,14 +864,28 @@ def vigilar_config_app(proceso: subprocess.Popen) -> None:
     proceso.wait()
 
     with bloqueo_estado:
-        if proceso_configuracion is proceso:
+        era_actual = proceso_configuracion is proceso
+        if era_actual:
             proceso_configuracion = None
+
+    if not era_actual:
+        return
+
+    reiniciar_sesion_posiciones_burbujas()
+
+    if not novalens_cerrando.is_set():
+        config = cargar_configuracion()
+        aplicar_configuracion_audio(config)
+        aplicar_configuracion_burbuja(config)
 
 
 def abrir_configuracion() -> None:
     global proceso_configuracion
 
-    if novalens_cerrando.is_set() or not ARCHIVO_CONFIG_APP.exists():
+    if (
+        novalens_cerrando.is_set()
+        or not archivo_hijo_disponible(ARCHIVO_CONFIG_APP)
+    ):
         return
 
     with bloqueo_estado:
@@ -842,12 +896,16 @@ def abrir_configuracion() -> None:
             return
 
         creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        reiniciar_sesion_posiciones_burbujas()
 
         try:
             proceso = subprocess.Popen(
                 [
                     sys.executable,
                     str(ARCHIVO_CONFIG_APP),
+                    str(ARCHIVO_ESTADO_BURBUJAS),
+                    str(ARCHIVO_POSICION_AUDIO_BORRADOR),
+                    str(ARCHIVO_POSICION_CONTROL_BORRADOR),
                 ],
                 cwd=str(CARPETA_PROYECTO),
                 creationflags=creation_flags,

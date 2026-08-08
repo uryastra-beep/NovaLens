@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import copy
+import sys
+from pathlib import Path
 from typing import Any
 
 import flet as ft
 import keyboard
 
+from bubble_layout import (
+    eliminar_archivo_sesion,
+    escribir_estado_desbloqueo,
+    leer_posicion,
+)
 from config_manager import (
     CONFIGURACION_PREDETERMINADA,
     cargar_api_key,
@@ -66,6 +74,8 @@ TRADUCCIONES = {
         "visible_time": "Visible time",
         "click_through": "Allow click-through when focus is lost",
         "control_bubble": "Show the Open / Close control bubble",
+        "unlock_bubbles": "Unlock floating bubbles to move them",
+        "unlock_bubbles_help": "Turn this on, drag the microphone bubble and the Open / Close bubble, then press Save changes to keep their new positions.",
         "audio": "Recent audio",
         "audio_sub": "Control the rolling microphone buffer used by Nova Lens.",
         "audio_enabled": "Keep recent microphone audio available",
@@ -134,6 +144,8 @@ TRADUCCIONES = {
         "visible_time": "Tiempo visible",
         "click_through": "Permitir click-through cuando pierde el foco",
         "control_bubble": "Mostrar la burbuja de Abrir / Cerrar",
+        "unlock_bubbles": "Desbloquear las burbujas para moverlas",
+        "unlock_bubbles_help": "Activá esta opción, arrastrá la burbuja del micrófono y la de Abrir / Cerrar, y luego presioná Guardar cambios para conservar sus posiciones.",
         "audio": "Audio reciente",
         "audio_sub": "Controlá el búfer continuo del micrófono que usa Nova Lens.",
         "audio_enabled": "Mantener disponible el audio reciente del micrófono",
@@ -188,6 +200,11 @@ def tarjeta(titulo: str, subtitulo: str, controles: list[ft.Control]) -> ft.Cont
 
 
 async def main(page: ft.Page) -> None:
+    archivo_desbloqueo = Path(sys.argv[1]) if len(sys.argv) >= 2 else None
+    archivo_posicion_audio = Path(sys.argv[2]) if len(sys.argv) >= 3 else None
+    archivo_posicion_control = Path(sys.argv[3]) if len(sys.argv) >= 4 else None
+    escribir_estado_desbloqueo(archivo_desbloqueo, False)
+
     config = cargar_configuracion()
     api_key_actual = cargar_api_key()
     idioma_actual = config["system"].get("language", "english")
@@ -208,6 +225,7 @@ async def main(page: ft.Page) -> None:
     audio = config["audio"]
     atajos = config["hotkeys"]
     sistema = config["system"]
+    posiciones_guardadas = copy.deepcopy(config["bubble_positions"])
 
     estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
 
@@ -286,6 +304,12 @@ async def main(page: ft.Page) -> None:
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
+    desbloquear_burbujas = ft.Switch(
+        label=t["unlock_bubbles"],
+        value=False,
+        active_color=ACENTO,
+        label_text_style=ft.TextStyle(color=TEXTO),
+    )
     audio_habilitado = ft.Switch(
         label=t["audio_enabled"],
         value=audio["enabled"],
@@ -304,6 +328,14 @@ async def main(page: ft.Page) -> None:
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
+
+    def cambiar_bloqueo_burbujas(e: Any = None) -> None:
+        escribir_estado_desbloqueo(
+            archivo_desbloqueo,
+            bool(desbloquear_burbujas.value),
+        )
+
+    desbloquear_burbujas.on_change = cambiar_bloqueo_burbujas
 
     atajo_abrir = campo(t["open"], atajos["open"], "p+enter", 310)
     atajo_config = campo(t["settings"], atajos["settings"], "p+shift+enter", 310)
@@ -424,6 +456,14 @@ async def main(page: ft.Page) -> None:
             mostrar_estado(t["fixed_collision"].format(fields=", ".join(colisiones)), False)
             return None
 
+        posiciones = copy.deepcopy(posiciones_guardadas)
+        posicion_audio = leer_posicion(archivo_posicion_audio)
+        posicion_control = leer_posicion(archivo_posicion_control)
+        if posicion_audio is not None:
+            posiciones["audio"] = posicion_audio
+        if posicion_control is not None:
+            posiciones["control"] = posicion_control
+
         return {
             "appearance": {
                 "primary_color": color_principal.value.strip(),
@@ -446,6 +486,7 @@ async def main(page: ft.Page) -> None:
                 "duration_seconds": round(duracion_audio.value or 10),
                 "show_indicator": bool(indicador_audio.value),
             },
+            "bubble_positions": posiciones,
             "hotkeys": {
                 "open": campos_atajos[t["open"]],
                 "settings": campos_atajos[t["settings"]],
@@ -464,6 +505,10 @@ async def main(page: ft.Page) -> None:
         audiocfg = datos["audio"]
         hk = datos["hotkeys"]
         syscfg = datos["system"]
+        posiciones_guardadas.clear()
+        posiciones_guardadas.update(
+            copy.deepcopy(datos["bubble_positions"])
+        )
 
         color_principal.value = ap["primary_color"]
         color_texto.value = ap["text_color"]
@@ -480,6 +525,8 @@ async def main(page: ft.Page) -> None:
         audio_habilitado.value = audiocfg["enabled"]
         duracion_audio.value = audiocfg["duration_seconds"]
         indicador_audio.value = audiocfg["show_indicator"]
+        desbloquear_burbujas.value = False
+        escribir_estado_desbloqueo(archivo_desbloqueo, False)
         atajo_abrir.value = hk["open"]
         atajo_config.value = hk["settings"]
         atajo_cerrar.value = hk["close"]
@@ -510,6 +557,8 @@ async def main(page: ft.Page) -> None:
         if not clave:
             mostrar_estado(t["need_key"], False)
             return
+        desbloquear_burbujas.value = False
+        escribir_estado_desbloqueo(archivo_desbloqueo, False)
         try:
             guardar_api_key(clave)
             guardada = guardar_configuracion(nueva)
@@ -517,9 +566,19 @@ async def main(page: ft.Page) -> None:
         except Exception as error:
             mostrar_estado(t["save_error"].format(error=error), False)
             return
+        posiciones_guardadas.clear()
+        posiciones_guardadas.update(
+            copy.deepcopy(guardada["bubble_positions"])
+        )
+        eliminar_archivo_sesion(archivo_posicion_audio)
+        eliminar_archivo_sesion(archivo_posicion_control)
         mostrar_estado(t["saved"], True)
 
     def restaurar(e: Any = None) -> None:
+        desbloquear_burbujas.value = False
+        escribir_estado_desbloqueo(archivo_desbloqueo, False)
+        eliminar_archivo_sesion(archivo_posicion_audio)
+        eliminar_archivo_sesion(archivo_posicion_control)
         try:
             restaurada = restaurar_configuracion()
             configurar_inicio_windows(False)
@@ -596,6 +655,12 @@ async def main(page: ft.Page) -> None:
                     fila_slider(t["visible_time"], tiempo, "s"),
                     click_through,
                     burbuja_control,
+                    desbloquear_burbujas,
+                    ft.Text(
+                        t["unlock_bubbles_help"],
+                        size=12,
+                        color=TEXTO_SECUNDARIO,
+                    ),
                 ],
             ),
             tarjeta(
