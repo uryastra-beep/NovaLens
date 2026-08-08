@@ -9,6 +9,7 @@ from unittest import mock
 from unittest.mock import patch
 
 import config_manager
+import main as novalens_main
 import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
@@ -283,6 +284,54 @@ class RollingAudioBufferTests(unittest.TestCase):
 
         self.assertEqual(buffer.duration_seconds, 3)
         self.assertLessEqual(buffer.available_seconds(), 3.0)
+
+
+class ChildProcessShutdownTests(unittest.TestCase):
+    def test_windows_shutdown_targets_only_the_child_process_tree(self) -> None:
+        proceso = mock.Mock()
+        proceso.pid = 4321
+        proceso.poll.return_value = None
+        proceso.wait.return_value = 0
+        resultado = SimpleNamespace(returncode=0)
+
+        with (
+            mock.patch.object(novalens_main.os, "name", "nt"),
+            mock.patch.object(
+                novalens_main.subprocess,
+                "run",
+                return_value=resultado,
+            ) as ejecutar,
+        ):
+            novalens_main.terminar_arbol_proceso(proceso)
+
+        ejecutar.assert_called_once()
+        argumentos = ejecutar.call_args.args[0]
+        self.assertEqual(
+            argumentos,
+            ["taskkill.exe", "/PID", "4321", "/T", "/F"],
+        )
+        proceso.terminate.assert_not_called()
+        proceso.kill.assert_not_called()
+
+    def test_failed_tree_shutdown_falls_back_to_direct_process_stop(self) -> None:
+        proceso = mock.Mock()
+        proceso.pid = 9876
+        proceso.poll.return_value = None
+        proceso.wait.return_value = 0
+        resultado = SimpleNamespace(returncode=128)
+
+        with (
+            mock.patch.object(novalens_main.os, "name", "nt"),
+            mock.patch.object(
+                novalens_main.subprocess,
+                "run",
+                return_value=resultado,
+            ),
+        ):
+            novalens_main.terminar_arbol_proceso(proceso)
+
+        proceso.terminate.assert_called_once_with()
+        proceso.wait.assert_called_once_with(timeout=1.0)
 
 
 if __name__ == "__main__":
