@@ -65,6 +65,7 @@ TRADUCCIONES = {
         "behavior_sub": "Visible time and behavior when focus is lost.",
         "visible_time": "Visible time",
         "click_through": "Allow click-through when focus is lost",
+        "control_bubble": "Show the Open / Close control bubble",
         "audio": "Recent audio",
         "audio_sub": "Control the rolling microphone buffer used by Nova Lens.",
         "audio_enabled": "Keep recent microphone audio available",
@@ -132,6 +133,7 @@ TRADUCCIONES = {
         "behavior_sub": "Tiempo visible y comportamiento al perder el foco.",
         "visible_time": "Tiempo visible",
         "click_through": "Permitir click-through cuando pierde el foco",
+        "control_bubble": "Mostrar la burbuja de Abrir / Cerrar",
         "audio": "Audio reciente",
         "audio_sub": "Controlá el búfer continuo del micrófono que usa Nova Lens.",
         "audio_enabled": "Mantener disponible el audio reciente del micrófono",
@@ -275,6 +277,12 @@ async def main(page: ft.Page) -> None:
     click_through = ft.Switch(
         label=t["click_through"],
         value=comportamiento["click_through_on_blur"],
+        active_color=ACENTO,
+        label_text_style=ft.TextStyle(color=TEXTO),
+    )
+    burbuja_control = ft.Switch(
+        label=t["control_bubble"],
+        value=comportamiento["show_control_bubble"],
         active_color=ACENTO,
         label_text_style=ft.TextStyle(color=TEXTO),
     )
@@ -431,6 +439,7 @@ async def main(page: ft.Page) -> None:
             "behavior": {
                 "visible_seconds": round(tiempo.value or 10),
                 "click_through_on_blur": bool(click_through.value),
+                "show_control_bubble": bool(burbuja_control.value),
             },
             "audio": {
                 "enabled": bool(audio_habilitado.value),
@@ -467,6 +476,7 @@ async def main(page: ft.Page) -> None:
         posicion.value = ap["position"]
         tiempo.value = beh["visible_seconds"]
         click_through.value = beh["click_through_on_blur"]
+        burbuja_control.value = beh["show_control_bubble"]
         audio_habilitado.value = audiocfg["enabled"]
         duracion_audio.value = audiocfg["duration_seconds"]
         indicador_audio.value = audiocfg["show_indicator"]
@@ -582,7 +592,11 @@ async def main(page: ft.Page) -> None:
             tarjeta(
                 t["behavior"],
                 t["behavior_sub"],
-                [fila_slider(t["visible_time"], tiempo, "s"), click_through],
+                [
+                    fila_slider(t["visible_time"], tiempo, "s"),
+                    click_through,
+                    burbuja_control,
+                ],
             ),
             tarjeta(
                 t["audio"],

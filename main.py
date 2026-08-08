@@ -32,12 +32,17 @@ ARCHIVO_POPUP = CARPETA_PROYECTO / "popup.py"
 ARCHIVO_CONFIG_APP = CARPETA_PROYECTO / "config.py"
 ARCHIVO_MULTIMODAL = CARPETA_PROYECTO / "multimodal.py"
 ARCHIVO_INDICADOR_AUDIO = CARPETA_PROYECTO / "audio_indicator.py"
+ARCHIVO_BURBUJA_CONTROL = CARPETA_PROYECTO / "control_bubble.py"
 
 ARCHIVO_CONTROL = (
     Path(tempfile.gettempdir())
     / f"novalens_control_{os.getpid()}.json"
 )
 ARCHIVO_CONTROL_TEMPORAL = ARCHIVO_CONTROL.with_suffix(".tmp")
+ARCHIVO_ACCIONES_BURBUJA = (
+    Path(tempfile.gettempdir())
+    / f"novalens_bubble_{os.getpid()}.json"
+)
 
 ATAJO_PANTALLA = "p+shift+s"
 ATAJO_AUDIO = "p+shift+a"
@@ -52,6 +57,7 @@ FRECUENCIA_AUDIO = 16_000
 proceso_popup: subprocess.Popen | None = None
 proceso_configuracion: subprocess.Popen | None = None
 proceso_indicador_audio: subprocess.Popen | None = None
+proceso_burbuja_control: subprocess.Popen | None = None
 procesos_multimodales: dict[str, subprocess.Popen] = {}
 
 bloqueo_estado = threading.Lock()
@@ -76,6 +82,7 @@ error_buffer_audio = ""
 audio_habilitado = True
 duracion_buffer_audio = 10
 mostrar_indicador_audio = True
+mostrar_burbuja_control = True
 
 
 # ══════════════════════════════════════════════
@@ -193,6 +200,19 @@ def eliminar_archivos_control() -> None:
         except OSError:
             pass
 
+    try:
+        ARCHIVO_ACCIONES_BURBUJA.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    for ruta in ARCHIVO_ACCIONES_BURBUJA.parent.glob(
+        f"{ARCHIVO_ACCIONES_BURBUJA.name}.*.tmp"
+    ):
+        try:
+            ruta.unlink(missing_ok=True)
+        except OSError:
+            pass
+
 
 # ══════════════════════════════════════════════
 # TEXT POPUP PROCESS
@@ -292,6 +312,120 @@ def detener_popup_residente() -> None:
     with bloqueo_estado:
         if proceso_popup is proceso:
             proceso_popup = None
+
+
+# ══════════════════════════════════════════════
+# OPEN / CLOSE CONTROL BUBBLE
+# ══════════════════════════════════════════════
+
+def ejecutar_accion_burbuja(accion: str) -> None:
+    if novalens_cerrando.is_set():
+        return
+
+    if accion == "open_popup":
+        activar_popup()
+    elif accion == "close_popup":
+        ocultar_popup_para_captura()
+
+
+def vigilar_acciones_burbuja() -> None:
+    ultimo_id: object = None
+
+    while not novalens_cerrando.wait(0.10):
+        try:
+            datos = json.loads(
+                ARCHIVO_ACCIONES_BURBUJA.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        identificador = datos.get("id")
+        if identificador is None or identificador == ultimo_id:
+            continue
+
+        ultimo_id = identificador
+        accion = datos.get("action")
+        if isinstance(accion, str):
+            ejecutar_accion_burbuja(accion)
+
+
+def vigilar_burbuja_control(proceso: subprocess.Popen) -> None:
+    global proceso_burbuja_control
+
+    proceso.wait()
+
+    with bloqueo_estado:
+        if proceso_burbuja_control is proceso:
+            proceso_burbuja_control = None
+
+
+def iniciar_burbuja_control() -> bool:
+    global proceso_burbuja_control
+
+    if (
+        novalens_cerrando.is_set()
+        or not mostrar_burbuja_control
+        or not ARCHIVO_BURBUJA_CONTROL.exists()
+    ):
+        return False
+
+    with bloqueo_estado:
+        proceso_actual = proceso_burbuja_control
+        if proceso_actual is not None and proceso_actual.poll() is None:
+            return True
+
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        try:
+            proceso = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ARCHIVO_BURBUJA_CONTROL),
+                    str(ARCHIVO_ACCIONES_BURBUJA),
+                ],
+                cwd=str(CARPETA_PROYECTO),
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return False
+
+        proceso_burbuja_control = proceso
+
+    threading.Thread(
+        target=vigilar_burbuja_control,
+        args=(proceso,),
+        daemon=True,
+    ).start()
+    return True
+
+
+def detener_burbuja_control() -> None:
+    global proceso_burbuja_control
+
+    with bloqueo_estado:
+        proceso = proceso_burbuja_control
+        proceso_burbuja_control = None
+
+    terminar_arbol_proceso(proceso, timeout=1.5)
+
+
+def aplicar_configuracion_burbuja(
+    config: dict | None = None,
+) -> None:
+    global mostrar_burbuja_control
+
+    configuracion = config or cargar_configuracion()
+    nueva_visibilidad = bool(
+        configuracion["behavior"]["show_control_bubble"]
+    )
+
+    # Recreate it after every saved setting so language, colors, margin, and
+    # transparency are refreshed together with the rest of the interface.
+    detener_burbuja_control()
+    mostrar_burbuja_control = nueva_visibilidad
+
+    if mostrar_burbuja_control:
+        iniciar_burbuja_control()
 
 
 # ══════════════════════════════════════════════
@@ -846,6 +980,7 @@ def vigilar_cambios_configuracion() -> None:
         config = cargar_configuracion()
         registrar_atajos(config)
         aplicar_configuracion_audio(config)
+        aplicar_configuracion_burbuja(config)
 
         # popup.py reads the configuration when it starts. Closing it here
         # makes the next launch use the new settings and language.
@@ -865,6 +1000,7 @@ def cerrar_novalens() -> None:
     novalens_cerrando.set()
 
     detener_popup_residente()
+    detener_burbuja_control()
     detener_procesos_multimodales()
     detener_indicador_audio()
     detener_buffer_audio()
@@ -895,7 +1031,13 @@ def main() -> None:
 
     config = cargar_configuracion()
     aplicar_configuracion_audio(config)
+    aplicar_configuracion_burbuja(config)
     registrar_atajos(config)
+
+    threading.Thread(
+        target=vigilar_acciones_burbuja,
+        daemon=True,
+    ).start()
 
     threading.Thread(
         target=vigilar_cambios_configuracion,

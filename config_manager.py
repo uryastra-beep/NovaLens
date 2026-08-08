@@ -32,6 +32,7 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
     "behavior": {
         "visible_seconds": 10,
         "click_through_on_blur": True,
+        "show_control_bubble": True,
     },
     "audio": {
         "enabled": True,
@@ -143,6 +144,9 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
     )
     comportamiento["click_through_on_blur"] = normalizar_bool(
         comportamiento.get("click_through_on_blur"), True
+    )
+    comportamiento["show_control_bubble"] = normalizar_bool(
+        comportamiento.get("show_control_bubble"), True
     )
 
     audio = _seccion_dict(config, "audio")

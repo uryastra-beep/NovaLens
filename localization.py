@@ -37,6 +37,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "analyzing_audio": "Analyzing the previous {seconds} seconds of microphone audio…",
         "processing_audio": "Processing recent audio…",
         "request_failed": "I could not complete the request.",
+        "bubble_open": "Open",
+        "bubble_close": "Close",
     },
     "spanish": {
         "popup_ready": "Nova Lens está listo. Escribí una pregunta en el campo inferior.",
@@ -71,6 +73,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "analyzing_audio": "Analizando los últimos {seconds} segundos del micrófono…",
         "processing_audio": "Procesando audio reciente…",
         "request_failed": "No pude completar la solicitud.",
+        "bubble_open": "Abrir",
+        "bubble_close": "Cerrar",
     },
 }
 

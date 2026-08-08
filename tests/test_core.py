@@ -32,6 +32,7 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertIsInstance(config["appearance"], dict)
         self.assertEqual(config["appearance"]["primary_color"], "#522E18")
         self.assertEqual(config["behavior"]["visible_seconds"], 10)
+        self.assertTrue(config["behavior"]["show_control_bubble"])
         self.assertTrue(config["audio"]["enabled"])
         self.assertEqual(config["audio"]["duration_seconds"], 10)
         self.assertEqual(config["hotkeys"]["open"], "p+enter")
@@ -40,12 +41,16 @@ class ConfigValidationTests(unittest.TestCase):
     def test_string_false_is_not_treated_as_true(self) -> None:
         config = validar_configuracion(
             {
-                "behavior": {"click_through_on_blur": "false"},
+                "behavior": {
+                    "click_through_on_blur": "false",
+                    "show_control_bubble": "false",
+                },
                 "system": {"start_with_windows": "false"},
             }
         )
 
         self.assertFalse(config["behavior"]["click_through_on_blur"])
+        self.assertFalse(config["behavior"]["show_control_bubble"])
         self.assertFalse(config["system"]["start_with_windows"])
 
     def test_audio_options_are_normalized_and_clamped(self) -> None:
@@ -332,6 +337,37 @@ class ChildProcessShutdownTests(unittest.TestCase):
 
         proceso.terminate.assert_called_once_with()
         proceso.wait.assert_called_once_with(timeout=1.0)
+
+
+class ControlBubbleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        novalens_main.novalens_cerrando.clear()
+
+    def test_open_action_uses_the_normal_popup_activation(self) -> None:
+        with (
+            patch.object(novalens_main, "activar_popup") as abrir,
+            patch.object(
+                novalens_main,
+                "ocultar_popup_para_captura",
+            ) as ocultar,
+        ):
+            novalens_main.ejecutar_accion_burbuja("open_popup")
+
+        abrir.assert_called_once_with()
+        ocultar.assert_not_called()
+
+    def test_close_action_only_hides_the_text_popup(self) -> None:
+        with (
+            patch.object(
+                novalens_main,
+                "ocultar_popup_para_captura",
+            ) as ocultar,
+            patch.object(novalens_main, "cerrar_novalens") as cerrar_app,
+        ):
+            novalens_main.ejecutar_accion_burbuja("close_popup")
+
+        ocultar.assert_called_once_with()
+        cerrar_app.assert_not_called()
 
 
 if __name__ == "__main__":
