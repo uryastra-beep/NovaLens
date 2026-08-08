@@ -1,4 +1,4 @@
-# Nova Lens
+# Nova Lens for Windows
 
 **Nova Lens for Windows — Powered by Google Gemini**
 
