@@ -20,7 +20,10 @@ from config_manager import (
     color_con_transparencia,
 )
 from localization import tr
-from popup_layout import calculate_popup_horizontal_geometry
+from popup_layout import (
+    apply_popup_width_constraints,
+    calculate_popup_horizontal_geometry,
+)
 from reporting import build_bug_report_url
 
 
@@ -210,10 +213,9 @@ async def main(page: ft.Page) -> None:
             MODO_VISUALIZACION,
         )
 
-        page.window.min_width = 420
+        apply_popup_width_constraints(page.window, ancho_seguro)
         page.window.min_height = ALTURA_MINIMA
         page.window.max_height = ALTURA_MAXIMA
-        page.window.width = ancho_seguro
         page.window.height = altura_segura
         page.window.left = izquierda_segura
 
@@ -628,11 +630,17 @@ async def main(page: ft.Page) -> None:
     page.window.always_on_top = True
     page.window.skip_task_bar = True
     page.window.resizable = False
+    page.window.maximizable = False
     page.window.shadow = False
     page.window.visible = False
     page.window.opacity = 0.0
     page.window.ignore_mouse_events = True
     page.window.on_event = evento_ventana
+
+    # Configure the compact viewport before Flet lays out the first frame.
+    # Applying it only after page.add() lets Windows briefly keep Flet's
+    # default full-screen width and compress the compact popup vertically.
+    aplicar_geometria(altura_actual)
 
     texto_respuesta = ft.Text(
         limpiar_markdown_basico(RESPUESTA_INICIAL),
@@ -808,6 +816,12 @@ async def main(page: ft.Page) -> None:
         await page.window.wait_until_ready_to_show()
     except Exception:
         pass
+
+    # Some Windows window managers restore saved/default bounds while the
+    # hidden native window is being created. Reassert them before showing it.
+    aplicar_geometria(altura_actual)
+    page.update()
+    await asyncio.sleep(0.04)
 
     page.window.visible = True
     page.window.opacity = 0.0

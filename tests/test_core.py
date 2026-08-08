@@ -16,7 +16,10 @@ import main as novalens_main
 import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
-from popup_layout import calculate_popup_horizontal_geometry
+from popup_layout import (
+    apply_popup_width_constraints,
+    calculate_popup_horizontal_geometry,
+)
 from reporting import build_bug_report_url, redact_secrets
 from rolling_audio import RollingAudioBuffer
 from screen_selector import normalizar_region
@@ -500,6 +503,24 @@ class PopupLayoutTests(unittest.TestCase):
             calculate_popup_horizontal_geometry(-1920, 1280, 8, "compact"),
             (-1640, 720),
         )
+
+    def test_popup_width_is_pinned_before_first_render(self) -> None:
+        class Window:
+            full_screen = True
+            maximized = True
+            min_width = None
+            max_width = None
+            width = None
+
+        window = Window()
+        applied_width = apply_popup_width_constraints(window, 720)
+
+        self.assertEqual(applied_width, 720)
+        self.assertFalse(window.full_screen)
+        self.assertFalse(window.maximized)
+        self.assertEqual(window.min_width, 720)
+        self.assertEqual(window.max_width, 720)
+        self.assertEqual(window.width, 720)
 
 
 class BugReportingTests(unittest.TestCase):

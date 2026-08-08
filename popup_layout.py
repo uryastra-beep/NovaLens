@@ -37,3 +37,17 @@ def calculate_popup_horizontal_geometry(
 
     return int(work_left) + safe_margin, available_width
 
+
+def apply_popup_width_constraints(window: Any, width: int) -> int:
+    """Pin a frameless popup to one width before its first rendered frame."""
+    safe_width = max(MINIMUM_WIDTH, int(width))
+
+    # Flet can restore a desktop window using its default/maximized viewport
+    # before a later width update arrives. Pinning every width property keeps
+    # the native window and Flutter surface in the same coordinate space.
+    window.full_screen = False
+    window.maximized = False
+    window.min_width = safe_width
+    window.max_width = safe_width
+    window.width = safe_width
+    return safe_width
