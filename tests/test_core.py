@@ -13,6 +13,7 @@ from unittest.mock import patch
 import bubble_layout
 import config_manager
 import main as novalens_main
+import native_clickthrough
 import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
@@ -561,6 +562,24 @@ class PopupLayoutTests(unittest.TestCase):
         self.assertEqual(window.max_height, 378)
         self.assertEqual(window.width, 1904)
         self.assertEqual(window.height, 378)
+
+
+class NativeClickThroughTests(unittest.TestCase):
+    def test_explicit_popup_state_wins_over_native_alpha(self) -> None:
+        self.assertTrue(
+            native_clickthrough.resolve_click_through_state(255, True)
+        )
+        self.assertFalse(
+            native_clickthrough.resolve_click_through_state(0, False)
+        )
+
+    def test_native_alpha_remains_a_legacy_fallback(self) -> None:
+        self.assertTrue(
+            native_clickthrough.resolve_click_through_state(0, None)
+        )
+        self.assertFalse(
+            native_clickthrough.resolve_click_through_state(255, None)
+        )
 
 
 class BugReportingTests(unittest.TestCase):

@@ -11,6 +11,32 @@ GWL_EXSTYLE = -20
 WS_EX_TRANSPARENT = 0x00000020
 LWA_ALPHA = 0x00000002
 
+_requested_click_through: bool | None = None
+_requested_state_lock = threading.Lock()
+
+
+def set_native_click_through(enabled: bool) -> None:
+    """Publish the popup's intended native hit-test state to the watcher."""
+    global _requested_click_through
+
+    with _requested_state_lock:
+        _requested_click_through = bool(enabled)
+
+
+def resolve_click_through_state(
+    native_alpha: int | None,
+    requested_state: bool | None,
+) -> bool:
+    """Prefer the explicit popup state and keep alpha as a legacy fallback."""
+    if requested_state is not None:
+        return bool(requested_state)
+    return native_alpha == 0
+
+
+def _get_requested_click_through() -> bool | None:
+    with _requested_state_lock:
+        return _requested_click_through
+
 
 def _find_process_window() -> int | None:
     if os.name != "nt":
@@ -104,10 +130,14 @@ def _watch_popup_window() -> None:
 
             alpha = _window_alpha(hwnd)
 
-            # Flet uses zero native opacity when the resident popup is hidden.
-            # Force the Win32 transparent hit-test style so the invisible
-            # window can never block clicks, even if Flet's property lags.
-            click_through = alpha == 0
+            # The resident popup now keeps its native compositor surface alive
+            # at full opacity. Its Flet content becomes transparent when hidden,
+            # while this explicit state keeps the invisible window from ever
+            # blocking desktop clicks. Alpha remains a fallback for older code.
+            click_through = resolve_click_through_state(
+                alpha,
+                _get_requested_click_through(),
+            )
 
             if click_through != last_state:
                 _set_click_through(hwnd, click_through)

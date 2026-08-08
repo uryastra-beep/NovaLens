@@ -20,6 +20,7 @@ from config_manager import (
     color_con_transparencia,
 )
 from localization import tr
+from native_clickthrough import set_native_click_through
 from popup_layout import (
     apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
@@ -312,8 +313,8 @@ async def main(page: ft.Page) -> None:
         popup_visible = False
         ocultando = False
         ventana_enfocada = False
-        page.window.opacity = 0.0
         page.window.ignore_mouse_events = True
+        set_native_click_through(True)
         page.update()
 
     async def ocultar_inmediatamente() -> None:
@@ -332,8 +333,8 @@ async def main(page: ft.Page) -> None:
         popup_visible = False
         ventana_enfocada = False
         popup.opacity = 0
-        page.window.opacity = 0.0
         page.window.ignore_mouse_events = True
+        set_native_click_through(True)
         page.update()
 
     async def cierre_automatico() -> None:
@@ -383,6 +384,7 @@ async def main(page: ft.Page) -> None:
         # Keep the native window transparent and non-interactive until Flutter
         # confirms that its viewport matches the requested compact/normal size.
         page.window.ignore_mouse_events = True
+        set_native_click_through(True)
         page.update()
 
         _, _, geometria_valida = await sincronizar_geometria(
@@ -396,14 +398,14 @@ async def main(page: ft.Page) -> None:
         if not geometria_valida:
             popup_visible = False
             ventana_enfocada = False
-            page.window.opacity = 0.0
             page.window.ignore_mouse_events = True
+            set_native_click_through(True)
             popup.opacity = 0
             page.update()
             return
 
-        page.window.opacity = 1.0
         page.window.ignore_mouse_events = False
+        set_native_click_through(False)
         page.window.focused = True
         popup.opacity = 1
         page.update()
@@ -559,8 +561,8 @@ async def main(page: ft.Page) -> None:
             indicador.visible = False
 
             if popup_visible:
-                page.window.opacity = 1.0
                 page.window.ignore_mouse_events = False
+                set_native_click_through(False)
                 popup.opacity = 1
 
             page.update()
@@ -665,8 +667,12 @@ async def main(page: ft.Page) -> None:
     page.window.resizable = False
     page.window.shadow = False
     page.window.visible = False
-    page.window.opacity = 0.0
+    # Never suspend the native compositor surface. Repeatedly changing the
+    # alpha of a resized transparent Flutter window can resume a stale raster
+    # whose pixels are vertically compressed while hit-testing stays correct.
+    page.window.opacity = 1.0
     page.window.ignore_mouse_events = True
+    set_native_click_through(True)
     page.window.on_event = evento_ventana
 
     # Configure the compact viewport before Flet lays out the first frame.
@@ -847,8 +853,8 @@ async def main(page: ft.Page) -> None:
     # Create the native window invisibly, then let Flutter confirm the real
     # viewport before commands are allowed to expose the popup.
     page.window.visible = True
-    page.window.opacity = 0.0
     page.window.ignore_mouse_events = True
+    set_native_click_through(True)
     page.update()
     await sincronizar_geometria(altura_actual)
 
