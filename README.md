@@ -1,6 +1,6 @@
 # Nova Lens
 
-**Nova Lens — Powered by Google Gemini**
+**Nova Lens for Windows — Powered by Google Gemini**
 
 Nova Lens is a Windows desktop AI assistant that runs in the background and gives you fast access to Google Gemini from any application.
 
@@ -317,7 +317,7 @@ To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -Sk
 - [x] Official Discord server and community integration.
 - [x] Functional in-app error-reporting button.
 - [x] Windows installer build.
-- [ ] Native Linux version.
+- [x] All Complete
 
 ## Support and Community
 
