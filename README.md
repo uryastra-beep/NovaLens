@@ -314,11 +314,9 @@ To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -Sk
 - [x] Configurable screen and audio hotkeys.
 - [x] Compact and normal display modes.
 - [x] Stable first-frame popup rendering on scaled Windows displays.
-- [ ] Short video analysis.
 - [x] Official Discord server and community integration.
 - [x] Functional in-app error-reporting button.
 - [x] Windows installer build.
-- [ ] Code signing.
 - [ ] Native Linux version.
 
 ## Support and Community
