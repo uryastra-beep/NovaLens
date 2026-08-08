@@ -159,6 +159,59 @@ async def wait_and_snap_native_window_geometry(
     return False
 
 
+async def rebuild_native_window_surface(
+    title: str,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    pulse_delta: int = 3,
+    settle_delay: float = 0.04,
+) -> bool:
+    """Force Flutter to recreate its first visible Windows raster surface.
+
+    The initial hidden resize can update hit testing before Flutter replaces
+    the runner's original 1280x720 backing surface. A later response resize
+    repairs the pixels because it delivers another real WM_SIZE. Reproduce
+    that repair invisibly by pulsing the native height and then settling on the
+    exact requested geometry after the first nearly-transparent frame.
+    """
+    if os.name != "nt":
+        return False
+
+    safe_delta = max(1, int(pulse_delta))
+    safe_delay = max(0.01, float(settle_delay))
+
+    pulsed = await wait_and_snap_native_window_geometry(
+        title,
+        left,
+        top,
+        width,
+        max(1, int(height) + safe_delta),
+        attempts=20,
+        interval=0.025,
+    )
+    if not pulsed:
+        return False
+
+    await asyncio.sleep(safe_delay)
+
+    settled = await wait_and_snap_native_window_geometry(
+        title,
+        left,
+        top,
+        width,
+        height,
+        attempts=8,
+        interval=0.025,
+    )
+    if not settled:
+        return False
+
+    await asyncio.sleep(safe_delay)
+    return True
+
+
 def apply_popup_window_geometry(
     window: Any,
     left: int,

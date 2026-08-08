@@ -24,6 +24,7 @@ from config_manager import (
 from localization import tr
 from popup_layout import (
     apply_popup_window_geometry,
+    rebuild_native_window_surface,
     wait_and_snap_native_window_geometry,
 )
 from screen_selector import seleccionar_region_pantalla_jpeg
@@ -207,6 +208,7 @@ async def main(page: ft.Page) -> None:
     cerrando = False
     ultima_interaccion = time.monotonic()
     altura_ventana_actual = ALTURA_MINIMA
+    superficie_inicial_preparada = False
 
     def geometria_popup(altura: int | float) -> tuple[int, int, int, int]:
         altura_segura = max(
@@ -311,8 +313,30 @@ async def main(page: ft.Page) -> None:
         await cerrar()
 
     async def mostrar_ventana() -> None:
+        nonlocal superficie_inicial_preparada
+
         await ajustar_geometria(altura_ventana_actual)
+        popup.opacity = 0.01
+        popup.update()
         page.window.visible = True
+        page.update()
+
+        await asyncio.sleep(0.03)
+
+        if not superficie_inicial_preparada:
+            left, top, width, height = geometria_popup(
+                altura_ventana_actual
+            )
+            superficie_inicial_preparada = (
+                await rebuild_native_window_surface(
+                    TITULO_VENTANA,
+                    left,
+                    top,
+                    width,
+                    height,
+                )
+            )
+
         page.window.focused = True
         page.update()
 
@@ -321,9 +345,6 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-        popup.opacity = 0
-        popup.update()
-        await asyncio.sleep(0.04)
         popup.opacity = 1
         popup.update()
         registrar_interaccion()

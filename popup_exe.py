@@ -24,6 +24,7 @@ from popup_layout import (
     apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
     popup_viewport_matches,
+    rebuild_native_window_surface,
     wait_and_snap_native_window_geometry,
 )
 from reporting import build_bug_report_url
@@ -191,6 +192,7 @@ async def main(page: ft.Page) -> None:
     proteger_blur_hasta = 0.0
     ultimo_comando_id = -1
     numero_transicion = 0
+    superficie_inicial_preparada = False
 
     temporizador: asyncio.Task | None = None
     tarea_ocultar_blur: asyncio.Task | None = None
@@ -394,6 +396,7 @@ async def main(page: ft.Page) -> None:
         nonlocal proteger_blur_hasta
         nonlocal ocultando
         nonlocal numero_transicion
+        nonlocal superficie_inicial_preparada
 
         if cerrando:
             return
@@ -435,6 +438,28 @@ async def main(page: ft.Page) -> None:
             popup.opacity = 0
             page.update()
             return
+
+        if not superficie_inicial_preparada:
+            # Opacity zero can skip painting the subtree entirely. Render one
+            # practically invisible frame, then deliver the second native
+            # WM_SIZE that repairs Flutter's initial backing surface.
+            popup.opacity = 0.01
+            page.update()
+            await asyncio.sleep(0.03)
+
+            left, top, width, height = calcular_geometria(altura_actual)
+            superficie_inicial_preparada = (
+                await rebuild_native_window_surface(
+                    TITULO_VENTANA,
+                    left,
+                    top,
+                    width,
+                    height,
+                )
+            )
+
+            if activacion_actual != numero_transicion:
+                return
 
         page.window.ignore_mouse_events = False
         page.window.focused = True

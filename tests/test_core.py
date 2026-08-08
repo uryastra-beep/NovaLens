@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 import sys
@@ -23,6 +24,7 @@ from popup_layout import (
     calculate_popup_horizontal_geometry,
     logical_to_physical_geometry,
     popup_viewport_matches,
+    rebuild_native_window_surface,
     snap_native_window_geometry,
 )
 from reporting import build_bug_report_url, redact_secrets
@@ -610,6 +612,57 @@ class PopupLayoutTests(unittest.TestCase):
             1900,
             206,
             popup_layout.SWP_NOZORDER | popup_layout.SWP_NOACTIVATE,
+        )
+
+    def test_first_visible_surface_gets_a_real_resize_pulse(self) -> None:
+        resize = mock.AsyncMock(side_effect=[True, True])
+
+        with (
+            patch.object(popup_layout.os, "name", "nt"),
+            patch.object(
+                popup_layout,
+                "wait_and_snap_native_window_geometry",
+                resize,
+            ),
+            patch.object(
+                popup_layout.asyncio,
+                "sleep",
+                mock.AsyncMock(),
+            ),
+        ):
+            prepared = asyncio.run(
+                rebuild_native_window_surface(
+                    "Nova Lens Text Popup",
+                    8,
+                    16,
+                    1520,
+                    165,
+                )
+            )
+
+        self.assertTrue(prepared)
+        self.assertEqual(
+            resize.await_args_list,
+            [
+                mock.call(
+                    "Nova Lens Text Popup",
+                    8,
+                    16,
+                    1520,
+                    168,
+                    attempts=20,
+                    interval=0.025,
+                ),
+                mock.call(
+                    "Nova Lens Text Popup",
+                    8,
+                    16,
+                    1520,
+                    165,
+                    attempts=8,
+                    interval=0.025,
+                ),
+            ],
         )
 
 
