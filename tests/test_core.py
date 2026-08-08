@@ -17,6 +17,7 @@ import main as novalens_main
 import native_clickthrough
 import popup_layout
 import screen_selector
+from app_info import DISCORD_INVITE_URL
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
 from popup_layout import (
@@ -27,7 +28,7 @@ from popup_layout import (
     rebuild_native_window_surface,
     snap_native_window_geometry,
 )
-from reporting import build_bug_report_url, redact_secrets
+from reporting import build_bug_report_url
 from rolling_audio import RollingAudioBuffer
 from screen_selector import normalizar_region
 
@@ -685,21 +686,9 @@ class NativeClickThroughTests(unittest.TestCase):
 
 
 class BugReportingTests(unittest.TestCase):
-    def test_bug_report_opens_a_prefilled_draft_without_secrets(self) -> None:
-        url = build_bug_report_url(
-            "text popup",
-            "GEMINI_API_KEY=AQ.this-is-a-secret-value Error 429",
-        )
-
-        self.assertIn("github.com/uryastra-beep/NovaLens/issues/new?", url)
-        self.assertIn("%23+What+happened", url)
-        self.assertNotIn("this-is-a-secret-value", url)
-
-    def test_known_gemini_key_shapes_are_redacted(self) -> None:
-        self.assertEqual(
-            redact_secrets("AIzaabcdefghijklmnopqrstuvwxyz123456"),
-            "[REDACTED]",
-        )
+    def test_bug_report_opens_the_official_discord_invitation(self) -> None:
+        self.assertEqual(build_bug_report_url(), DISCORD_INVITE_URL)
+        self.assertEqual(DISCORD_INVITE_URL, "https://discord.gg/Dfns48WEqH")
 
 
 class BubbleLayoutTests(unittest.TestCase):

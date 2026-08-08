@@ -1,9 +1,10 @@
 #define MyAppName "Nova Lens"
 #ifndef MyAppVersion
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.0.1"
 #endif
 #define MyAppPublisher "Nova Lens"
 #define MyAppURL "https://github.com/uryastra-beep/NovaLens"
+#define MyAppSupportURL "https://discord.gg/Dfns48WEqH"
 #define MyAppExeName "NovaLens.exe"
 
 [Setup]
@@ -13,7 +14,7 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}/issues
+AppSupportURL={#MyAppSupportURL}
 AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={localappdata}\Programs\Nova Lens
 DefaultGroupName=Nova Lens

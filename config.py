@@ -36,6 +36,14 @@ BORDE = "#513A2E"
 ERROR = "#FF8A80"
 EXITO = "#9BE59B"
 
+
+def ruta_recurso(ruta_relativa: str) -> str:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return str(base / ruta_relativa)
+
+
+RUTA_LOGO = ruta_recurso("assets/NovaLens.png")
+
 TRADUCCIONES = {
     "english": {
         "window_title": "Nova Lens Settings",
@@ -321,6 +329,12 @@ async def main(page: ft.Page) -> None:
     posiciones_guardadas = copy.deepcopy(config["bubble_positions"])
 
     estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
+    logo_novalens = ft.Image(
+        src=RUTA_LOGO,
+        width=58,
+        height=58,
+        fit=ft.BoxFit.CONTAIN,
+    )
     titulo_principal = ft.Text(
         t["welcome_title"] if onboarding_activo else t["title"],
         size=28,
@@ -813,6 +827,7 @@ async def main(page: ft.Page) -> None:
         controls=[
             ft.Row(
                 controls=[
+                    logo_novalens,
                     ft.Column(
                         controls=[
                             titulo_principal,
@@ -822,7 +837,9 @@ async def main(page: ft.Page) -> None:
                         expand=True,
                     ),
                     ft.Text(APP_VERSION, color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
-                ]
+                ],
+                spacing=14,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             estado,
             tarjeta_bienvenida,

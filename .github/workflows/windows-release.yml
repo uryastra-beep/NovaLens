@@ -1,4 +1,4 @@
-name: Build Nova Lens 2.0.0 Release Installer
+name: Build Nova Lens 2.0.1 Release Installer
 
 on:
   push:
@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NOVALENS_VERSION: 2.0.0
-  INSTALLER_EXE: installer-output/NovaLens-Setup-v2.0.0-Windows-x64.exe
+  NOVALENS_VERSION: 2.0.1
+  INSTALLER_EXE: installer-output/NovaLens-Setup-v2.0.1-Windows-x64.exe
 
 jobs:
   build-release-installer:
@@ -63,10 +63,10 @@ jobs:
             throw "Required release asset was not created: $env:INSTALLER_EXE"
           }
 
-      - name: Upload official v2.0.0 installer
+      - name: Upload official v2.0.1 installer
         uses: actions/upload-artifact@v4
         with:
-          name: NovaLens-v2.0.0-Release-Installer
+          name: NovaLens-v2.0.1-Release-Installer
           path: |
             ${{ env.INSTALLER_EXE }}
           if-no-files-found: error

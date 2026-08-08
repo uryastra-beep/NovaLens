@@ -181,7 +181,6 @@ async def main(page: ft.Page) -> None:
 
     altura_actual = calcular_altura(RESPUESTA_INICIAL, ancho_popup)
     respuesta_actual = RESPUESTA_INICIAL
-    ultimo_error = ""
     historial: list[tuple[str, str]] = []
 
     popup_visible = False
@@ -550,7 +549,6 @@ async def main(page: ft.Page) -> None:
         nonlocal procesando
         nonlocal respuesta_actual
         nonlocal altura_actual
-        nonlocal ultimo_error
 
         if procesando or cerrando:
             return
@@ -584,7 +582,6 @@ async def main(page: ft.Page) -> None:
             nueva_respuesta = (nueva_respuesta or "").strip() or tr("no_text")
 
             respuesta_actual = nueva_respuesta
-            ultimo_error = ""
             historial.append((nueva_pregunta, nueva_respuesta))
 
             if len(historial) > 8:
@@ -605,7 +602,6 @@ async def main(page: ft.Page) -> None:
             # Backend failures are displayed but never stored as conversation
             # history, so auth/debug text cannot contaminate later prompts.
             respuesta_actual = str(error)
-            ultimo_error = respuesta_actual
             texto_respuesta.value = limpiar_markdown_basico(respuesta_actual)
             mensaje_estado.value = tr("error_occurred")
 
@@ -647,7 +643,7 @@ async def main(page: ft.Page) -> None:
 
     async def informar_error(e=None) -> None:
         registrar_interaccion()
-        url = build_bug_report_url("text popup", ultimo_error)
+        url = build_bug_report_url()
         try:
             abierto = await asyncio.to_thread(webbrowser.open, url, 2)
         except Exception:

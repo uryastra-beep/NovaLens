@@ -132,7 +132,7 @@ $packArguments = @(
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
     "--hidden-import", "popup", "popup_exe", "config", "multimodal", "audio_indicator", "bubble_layout", "control_bubble", "screen_selector", "localization", "app_info", "popup_layout", "reporting",
-    "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;.", "audio_indicator.py;.", "control_bubble.py;."
+    "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;.", "audio_indicator.py;.", "control_bubble.py;.", "assets\NovaLens.png;assets"
 )
 
 $iconPath = Join-Path $PSScriptRoot "assets\NovaLens.ico"
