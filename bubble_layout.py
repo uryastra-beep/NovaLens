@@ -137,11 +137,62 @@ def obtener_escritorio_virtual(
         ancho = int(user32.GetSystemMetrics(78))
         alto = int(user32.GetSystemMetrics(79))
         if ancho > 0 and alto > 0:
-            return izquierda, arriba, ancho, alto
+            return convertir_rectangulo_a_logico(
+                izquierda,
+                arriba,
+                ancho,
+                alto,
+                obtener_escala_dpi_sistema(),
+            )
     except Exception:
         pass
 
     return area_alternativa
+
+
+def obtener_escala_dpi_sistema() -> float:
+    if os.name != "nt":
+        return 1.0
+
+    try:
+        dpi = int(ctypes.windll.user32.GetDpiForSystem())
+    except Exception:
+        dpi = 96
+
+    return max(1.0, dpi / 96.0)
+
+
+def convertir_rectangulo_a_logico(
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    scale: float,
+) -> tuple[int, int, int, int]:
+    """Convert native Windows pixels to Flet logical coordinates."""
+    try:
+        safe_scale = max(1.0, float(scale))
+    except (TypeError, ValueError, OverflowError):
+        safe_scale = 1.0
+
+    if not math.isfinite(safe_scale):
+        safe_scale = 1.0
+
+    return (
+        round(int(left) / safe_scale),
+        round(int(top) / safe_scale),
+        round(int(width) / safe_scale),
+        round(int(height) / safe_scale),
+    )
+
+
+def _escala_dpi_ventana(hwnd: int) -> float:
+    try:
+        dpi = int(ctypes.windll.user32.GetDpiForWindow(hwnd))
+    except Exception:
+        return obtener_escala_dpi_sistema()
+
+    return max(1.0, dpi / 96.0)
 
 
 def resolver_posicion(
@@ -185,7 +236,11 @@ def obtener_posicion_ventana_proceso(
                     hwnd_titulo,
                     ctypes.byref(rect_titulo),
                 ):
-                    return int(rect_titulo.left), int(rect_titulo.top)
+                    escala = _escala_dpi_ventana(hwnd_titulo)
+                    return (
+                        round(int(rect_titulo.left) / escala),
+                        round(int(rect_titulo.top) / escala),
+                    )
         except Exception:
             pass
 
@@ -212,7 +267,13 @@ def obtener_posicion_ventana_proceso(
         if rect.right - rect.left < 60 or rect.bottom - rect.top < 20:
             return True
 
-        resultado.append((int(rect.left), int(rect.top)))
+        escala = _escala_dpi_ventana(hwnd)
+        resultado.append(
+            (
+                round(int(rect.left) / escala),
+                round(int(rect.top) / escala),
+            )
+        )
         return False
 
     try:

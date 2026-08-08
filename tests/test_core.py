@@ -17,6 +17,7 @@ import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
 from popup_layout import (
+    apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
     popup_viewport_matches,
 )
@@ -513,6 +514,33 @@ class PopupLayoutTests(unittest.TestCase):
         self.assertFalse(popup_viewport_matches(None, 165, 720, 165))
         self.assertFalse(popup_viewport_matches(float("nan"), 165, 720, 165))
 
+    def test_popup_geometry_always_restores_a_maximized_window(self) -> None:
+        window = SimpleNamespace(
+            full_screen=True,
+            maximized=True,
+            maximizable=True,
+            resizable=True,
+        )
+
+        geometry = apply_popup_window_geometry(
+            window,
+            600,
+            8,
+            720,
+            165,
+            165,
+            378,
+        )
+
+        self.assertEqual(geometry, (600, 8, 720, 165))
+        self.assertFalse(window.full_screen)
+        self.assertFalse(window.maximized)
+        self.assertFalse(window.maximizable)
+        self.assertFalse(window.resizable)
+        self.assertEqual(window.min_width, 420)
+        self.assertEqual(window.width, 720)
+        self.assertEqual(window.height, 165)
+
 
 class BugReportingTests(unittest.TestCase):
     def test_bug_report_opens_a_prefilled_draft_without_secrets(self) -> None:
@@ -533,6 +561,29 @@ class BugReportingTests(unittest.TestCase):
 
 
 class BubbleLayoutTests(unittest.TestCase):
+    def test_native_pixels_are_converted_to_flet_logical_coordinates(self) -> None:
+        self.assertEqual(
+            bubble_layout.convertir_rectangulo_a_logico(
+                0,
+                0,
+                1920,
+                1040,
+                1.25,
+            ),
+            (0, 0, 1536, 832),
+        )
+
+        self.assertEqual(
+            bubble_layout.convertir_rectangulo_a_logico(
+                -1920,
+                0,
+                1920,
+                1080,
+                1.5,
+            ),
+            (-1280, 0, 1280, 720),
+        )
+
     def test_saved_position_is_clamped_to_the_virtual_desktop(self) -> None:
         self.assertEqual(
             bubble_layout.resolver_posicion(

@@ -21,6 +21,7 @@ from config_manager import (
 )
 from localization import tr
 from popup_layout import (
+    apply_popup_window_geometry,
     calculate_popup_horizontal_geometry,
     popup_viewport_matches,
 )
@@ -213,20 +214,23 @@ async def main(page: ft.Page) -> None:
             MODO_VISUALIZACION,
         )
 
-        page.window.min_width = 420
-        page.window.min_height = ALTURA_MINIMA
-        page.window.max_height = ALTURA_MAXIMA
-        page.window.width = ancho_seguro
-        page.window.height = altura_segura
-        page.window.left = izquierda_segura
-
         if POSICION_POPUP == "bottom":
-            page.window.top = max(
+            arriba_seguro = max(
                 arriba + MARGEN_PANTALLA,
                 arriba + alto - altura_segura - MARGEN_PANTALLA,
             )
         else:
-            page.window.top = arriba + MARGEN_PANTALLA
+            arriba_seguro = arriba + MARGEN_PANTALLA
+
+        apply_popup_window_geometry(
+            page.window,
+            izquierda_segura,
+            arriba_seguro,
+            ancho_seguro,
+            altura_segura,
+            ALTURA_MINIMA,
+            ALTURA_MAXIMA,
+        )
 
         if zona_respuesta is not None:
             zona_respuesta.height = calcular_altura_respuesta(altura_segura)
@@ -236,7 +240,7 @@ async def main(page: ft.Page) -> None:
     async def sincronizar_geometria(
         altura: int | float,
         intentos: int = 6,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, bool]:
         """Wait until Flutter has adopted the requested native window bounds."""
         ancho_esperado, altura_esperada = aplicar_geometria(altura)
         page.update()
@@ -249,12 +253,18 @@ async def main(page: ft.Page) -> None:
                 ancho_esperado,
                 altura_esperada,
             ):
-                break
+                return ancho_esperado, altura_esperada, True
 
             ancho_esperado, altura_esperada = aplicar_geometria(altura)
             page.update()
 
-        return ancho_esperado, altura_esperada
+        geometria_valida = popup_viewport_matches(
+            page.width,
+            page.height,
+            ancho_esperado,
+            altura_esperada,
+        )
+        return ancho_esperado, altura_esperada, geometria_valida
 
     def cancelar_tarea(tarea: asyncio.Task | None) -> None:
         if tarea is None or tarea.done():
@@ -384,9 +394,21 @@ async def main(page: ft.Page) -> None:
         page.window.ignore_mouse_events = True
         page.update()
 
-        await sincronizar_geometria(altura_actual)
+        _, _, geometria_valida = await sincronizar_geometria(
+            altura_actual,
+            intentos=12,
+        )
 
         if activacion_actual != numero_transicion:
+            return
+
+        if not geometria_valida:
+            popup_visible = False
+            ventana_enfocada = False
+            page.window.opacity = 0.0
+            page.window.ignore_mouse_events = True
+            popup.opacity = 0
+            page.update()
             return
 
         page.window.opacity = 1.0

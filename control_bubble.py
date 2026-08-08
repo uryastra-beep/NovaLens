@@ -32,8 +32,10 @@ _preparar_dpi_temprano()
 import flet as ft
 
 from bubble_layout import (
+    convertir_rectangulo_a_logico,
     escribir_posicion,
     leer_estado_desbloqueo,
+    obtener_escala_dpi_sistema,
     obtener_escritorio_virtual,
     obtener_posicion_ventana_proceso,
     resolver_posicion,
@@ -62,11 +64,12 @@ def obtener_area_trabajo() -> tuple[int, int, int, int]:
                 ctypes.byref(rect),
                 0,
             ):
-                return (
+                return convertir_rectangulo_a_logico(
                     int(rect.left),
                     int(rect.top),
                     int(rect.right - rect.left),
                     int(rect.bottom - rect.top),
+                    obtener_escala_dpi_sistema(),
                 )
         except Exception:
             pass

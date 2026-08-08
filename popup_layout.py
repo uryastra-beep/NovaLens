@@ -9,6 +9,44 @@ COMPACT_WIDTH = 720
 MINIMUM_WIDTH = 420
 
 
+def apply_popup_window_geometry(
+    window: Any,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    minimum_height: int,
+    maximum_height: int,
+) -> tuple[int, int, int, int]:
+    """Restore a frameless popup and apply one bounded window geometry."""
+    safe_width = max(MINIMUM_WIDTH, int(width))
+    safe_minimum_height = max(1, int(minimum_height))
+    safe_maximum_height = max(safe_minimum_height, int(maximum_height))
+    safe_height = max(
+        safe_minimum_height,
+        min(int(height), safe_maximum_height),
+    )
+    safe_left = int(left)
+    safe_top = int(top)
+
+    # Windows can restore a hidden Flet window as maximized. Width and height
+    # updates are ignored while that state is active, so clear it every time
+    # before applying the requested bounds.
+    window.full_screen = False
+    window.maximized = False
+    window.maximizable = False
+    window.resizable = False
+    window.min_width = MINIMUM_WIDTH
+    window.min_height = safe_minimum_height
+    window.max_height = safe_maximum_height
+    window.width = safe_width
+    window.height = safe_height
+    window.left = safe_left
+    window.top = safe_top
+
+    return safe_left, safe_top, safe_width, safe_height
+
+
 def normalize_display_mode(value: Any) -> str:
     mode = str(value or "").strip().lower()
     return mode if mode in DISPLAY_MODES else "normal"
