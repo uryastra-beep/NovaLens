@@ -61,6 +61,8 @@ TIEMPO_VISIBLE = COMPORTAMIENTO["visible_seconds"]
 
 ALTURA_MINIMA = 150
 ALTURA_MAXIMA = 420
+ALTURA_CONTROLES_FIJOS = 104
+ALTURA_RESPUESTA_MINIMA = 32
 DURACION_ENTRADA_MS = 420
 DURACION_SALIDA_MS = 520
 
@@ -144,6 +146,33 @@ def calcular_altura(texto: str, ancho: int) -> int:
 
     altura = 118 + lineas * (TAMANO_FUENTE + 7)
     return max(ALTURA_MINIMA, min(altura, ALTURA_MAXIMA))
+
+
+def calcular_altura_respuesta(altura_popup: int | float) -> int:
+    altura_segura = max(
+        ALTURA_MINIMA,
+        min(int(round(altura_popup)), ALTURA_MAXIMA),
+    )
+    return max(
+        ALTURA_RESPUESTA_MINIMA,
+        altura_segura - ALTURA_CONTROLES_FIJOS,
+    )
+
+
+def crear_zona_respuesta(
+    texto: ft.Text,
+    altura_popup: int | float,
+    on_scroll,
+) -> ft.ListView:
+    # Frameless Flet windows need an explicit viewport for wheel scrolling.
+    return ft.ListView(
+        controls=[texto],
+        height=calcular_altura_respuesta(altura_popup),
+        build_controls_on_demand=False,
+        scroll=ft.ScrollMode.ALWAYS,
+        scroll_interval=50,
+        on_scroll=on_scroll,
+    )
 
 
 def leer_audio_temporal() -> bytes:
@@ -288,6 +317,7 @@ async def main(page: ft.Page) -> None:
 
         nueva_altura = calcular_altura(limpio, ancho_popup)
         page.window.height = nueva_altura
+        zona_respuesta.height = calcular_altura_respuesta(nueva_altura)
 
         if POSICION_POPUP == "bottom":
             page.window.top = (
@@ -296,6 +326,11 @@ async def main(page: ft.Page) -> None:
 
         registrar_interaccion()
         page.update()
+
+        try:
+            await zona_respuesta.scroll_to(offset=0, duration=1)
+        except Exception:
+            pass
 
     async def esperar_inactividad() -> None:
         while not cerrando:
@@ -326,11 +361,10 @@ async def main(page: ft.Page) -> None:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    zona_respuesta = ft.Column(
-        controls=[texto_respuesta],
-        expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        on_scroll=registrar_interaccion,
+    zona_respuesta = crear_zona_respuesta(
+        texto_respuesta,
+        ALTURA_MINIMA,
+        registrar_interaccion,
     )
 
     barra_inferior = ft.Row(

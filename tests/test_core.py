@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,8 +10,8 @@ from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import patch
 
-import config_manager
 import bubble_layout
+import config_manager
 import main as novalens_main
 import screen_selector
 from backend import _extraer_texto_rest
@@ -427,6 +429,37 @@ class BubbleLayoutTests(unittest.TestCase):
 
             bubble_layout.eliminar_archivo_sesion(path)
             self.assertFalse(path.exists())
+
+
+class MultimodalScrollTests(unittest.TestCase):
+    def test_response_area_uses_a_bounded_always_scrollable_list(self) -> None:
+        sys.modules.pop("multimodal", None)
+
+        with (
+            patch.object(sys, "argv", ["multimodal.py", "screen"]),
+            patch.object(
+                config_manager,
+                "cargar_configuracion",
+                return_value=config_manager.validar_configuracion({}),
+            ),
+        ):
+            multimodal = importlib.import_module("multimodal")
+
+        texto = multimodal.ft.Text("long response")
+        zona = multimodal.crear_zona_respuesta(
+            texto,
+            multimodal.ALTURA_MAXIMA,
+            lambda e=None: None,
+        )
+
+        self.assertIsInstance(zona, multimodal.ft.ListView)
+        self.assertEqual(zona.scroll, multimodal.ft.ScrollMode.ALWAYS)
+        self.assertEqual(
+            zona.height,
+            multimodal.ALTURA_MAXIMA
+            - multimodal.ALTURA_CONTROLES_FIJOS,
+        )
+        self.assertFalse(zona.build_controls_on_demand)
 
 
 if __name__ == "__main__":
