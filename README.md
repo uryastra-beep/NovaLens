@@ -12,7 +12,7 @@ Use a floating popup for text questions, analyze a selected screen region, or as
 - **Platform:** Windows x64
 - **Download:** `NovaLens-Setup-v2.0.0-Windows-x64.exe`
 - **AI provider:** Google Gemini
-- **License:** No project license has been selected yet
+- **License:** GNU General Public License v3.0 only (`GPL-3.0-only`)
 
 ## What's New in 2.0.0
 
@@ -176,6 +176,7 @@ NovaLens/
 ├── tests/
 ├── requirements-build.txt
 ├── requirements.txt
+├── LICENSE
 ├── README.md
 ├── RELEASE_NOTES_v2.0.0.md
 └── .gitignore
@@ -335,7 +336,11 @@ Nova Lens is not intended to replace medical, legal, financial, or other profess
 
 ## License
 
-A project license has not been selected yet. Until a license is added, copyright law applies by default and reuse rights are not granted automatically.
+Copyright (C) 2026 Ury (uryastra-beep).
+
+The source code in this repository is licensed under the GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE) for the complete license text.
+
+Third-party names, logos, images, and other assets are not covered by this license and remain the property of their respective owners.
 
 ---
 
