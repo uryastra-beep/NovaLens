@@ -36,9 +36,15 @@ def apply_popup_window_geometry(
     window.maximized = False
     window.maximizable = False
     window.resizable = False
-    window.min_width = MINIMUM_WIDTH
-    window.min_height = safe_minimum_height
-    window.max_height = safe_maximum_height
+    # Pin both dimensions to the requested viewport. Leaving a range here
+    # allows Windows/Flet to restore an older hidden-window size that is still
+    # technically valid (for example 720x378 instead of 720x165). Flutter then
+    # lays out the expanded popup against one surface while Windows displays
+    # another, which clips the UI into a thin strip.
+    window.min_width = safe_width
+    window.max_width = safe_width
+    window.min_height = safe_height
+    window.max_height = safe_height
     window.width = safe_width
     window.height = safe_height
     window.left = safe_left

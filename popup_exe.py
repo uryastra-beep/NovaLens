@@ -61,14 +61,9 @@ ALTURA_MINIMA = 165
 ALTURA_MAXIMA = 378
 ALTURA_CONTROLES_FIJOS = 112
 ALTURA_RESPUESTA_MINIMA = 32
-DURACION_ENTRADA_MS = 280
 DURACION_SALIDA_MS = 220
 RETRASO_OCULTAR_POR_BLUR = 0.18
 PROTECCION_BLUR_AL_ABRIR = 0.70
-DESPLAZAMIENTO_INICIAL = (
-    0.18 if POSICION_POPUP == "bottom" else -0.18
-)
-
 RESPUESTA_INICIAL = tr("popup_ready")
 
 
@@ -302,7 +297,6 @@ async def main(page: ft.Page) -> None:
         transicion_actual = numero_transicion
 
         popup.opacity = 0
-        popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         popup.update()
 
         try:
@@ -338,7 +332,6 @@ async def main(page: ft.Page) -> None:
         popup_visible = False
         ventana_enfocada = False
         popup.opacity = 0
-        popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         page.window.opacity = 0.0
         page.window.ignore_mouse_events = True
         page.update()
@@ -384,10 +377,8 @@ async def main(page: ft.Page) -> None:
 
         if estaba_oculto:
             popup.opacity = 0
-            popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         else:
             popup.opacity = 1
-            popup.offset = ft.Offset(0, 0)
 
         # Keep the native window transparent and non-interactive until Flutter
         # confirms that its viewport matches the requested compact/normal size.
@@ -415,7 +406,6 @@ async def main(page: ft.Page) -> None:
         page.window.ignore_mouse_events = False
         page.window.focused = True
         popup.opacity = 1
-        popup.offset = ft.Offset(0, 0)
         page.update()
 
         try:
@@ -572,7 +562,6 @@ async def main(page: ft.Page) -> None:
                 page.window.opacity = 1.0
                 page.window.ignore_mouse_events = False
                 popup.opacity = 1
-                popup.offset = ft.Offset(0, 0)
 
             page.update()
             reiniciar_temporizador()
@@ -834,14 +823,9 @@ async def main(page: ft.Page) -> None:
         ),
         content=contenido,
         opacity=0,
-        offset=ft.Offset(0, DESPLAZAMIENTO_INICIAL),
         animate_opacity=ft.Animation(
             duration=DURACION_SALIDA_MS,
             curve=ft.AnimationCurve.EASE_OUT,
-        ),
-        animate_offset=ft.Animation(
-            duration=DURACION_ENTRADA_MS,
-            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
         ),
     )
 

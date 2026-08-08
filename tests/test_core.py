@@ -537,9 +537,30 @@ class PopupLayoutTests(unittest.TestCase):
         self.assertFalse(window.maximized)
         self.assertFalse(window.maximizable)
         self.assertFalse(window.resizable)
-        self.assertEqual(window.min_width, 420)
+        self.assertEqual(window.min_width, 720)
+        self.assertEqual(window.max_width, 720)
+        self.assertEqual(window.min_height, 165)
+        self.assertEqual(window.max_height, 165)
         self.assertEqual(window.width, 720)
         self.assertEqual(window.height, 165)
+
+    def test_popup_geometry_relocks_dimensions_after_response_resize(self) -> None:
+        window = SimpleNamespace(
+            full_screen=False,
+            maximized=False,
+            maximizable=False,
+            resizable=False,
+        )
+
+        apply_popup_window_geometry(window, 8, 8, 1904, 165, 165, 378)
+        apply_popup_window_geometry(window, 8, 8, 1904, 378, 165, 378)
+
+        self.assertEqual(window.min_width, 1904)
+        self.assertEqual(window.max_width, 1904)
+        self.assertEqual(window.min_height, 378)
+        self.assertEqual(window.max_height, 378)
+        self.assertEqual(window.width, 1904)
+        self.assertEqual(window.height, 378)
 
 
 class BugReportingTests(unittest.TestCase):

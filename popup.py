@@ -61,8 +61,6 @@ DURACION_ENTRADA_MS = 550
 DURACION_SALIDA_MS = 650
 RETRASO_OCULTAR_POR_BLUR = 0.18
 PROTECCION_BLUR_AL_ABRIR = DURACION_ENTRADA_MS / 1000 + 0.25
-DESPLAZAMIENTO_INICIAL = 1.10 if POSICION_POPUP == "bottom" else -1.10
-
 if len(sys.argv) < 2:
     raise SystemExit("popup.py requires the control-file path.")
 
@@ -439,10 +437,8 @@ async def main(page: ft.Page) -> None:
 
         if estaba_oculto:
             popup.opacity = 0
-            popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
         else:
             popup.opacity = 1
-            popup.offset = ft.Offset(0, 0)
 
         page.window.ignore_mouse_events = True
         page.window.visible = True
@@ -477,7 +473,6 @@ async def main(page: ft.Page) -> None:
 
         if estaba_oculto:
             popup.opacity = 1
-            popup.offset = ft.Offset(0, 0)
             popup.update()
             try:
                 await asyncio.sleep(DURACION_ENTRADA_MS / 1000)
@@ -822,14 +817,9 @@ async def main(page: ft.Page) -> None:
         ),
         content=contenido,
         opacity=0,
-        offset=ft.Offset(0, DESPLAZAMIENTO_INICIAL),
         animate_opacity=ft.Animation(
             duration=DURACION_SALIDA_MS,
             curve=ft.AnimationCurve.EASE_OUT,
-        ),
-        animate_offset=ft.Animation(
-            duration=DURACION_ENTRADA_MS,
-            curve=ft.AnimationCurve.EASE_OUT_CUBIC,
         ),
     )
 
