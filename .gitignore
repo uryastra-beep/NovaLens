@@ -21,9 +21,12 @@ __pycache__/
 # Windows build and release output
 build/
 dist/
+installer-output/
 *.spec
 NovaLens-*-Windows-x64.zip
 NovaLens-*-Windows-x64.zip.sha256
+NovaLens-Setup-*-Windows-x64.exe
+NovaLens-Setup-*-Windows-x64.exe.sha256
 
 # Configuración de editores
 .vscode/

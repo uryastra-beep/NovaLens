@@ -8,28 +8,38 @@ Use a floating popup for text questions, analyze a selected screen region, or as
 
 ## Current Release
 
-- **Version:** `v1.1.0`
+- **Version:** `v2.0.0`
 - **Platform:** Windows x64
-- **Download:** `NovaLens-v1.1.0-Windows-x64.zip`
+- **Recommended download:** `NovaLens-Setup-v2.0.0-Windows-x64.exe`
+- **Portable download:** `NovaLens-v2.0.0-Windows-x64.zip`
 - **AI provider:** Google Gemini
 - **License:** No project license has been selected yet
 
-## Version 2.0.0 Development
+## What's New in 2.0.0
 
-Nova Lens 2.0.0 is currently under development. It adds configurable screen and audio hotkeys, normal and compact popup modes, a safe in-app bug-report flow, and a per-user Windows installer. The latest stable public release remains v1.1.0 until v2.0.0 testing is complete.
+Nova Lens 2.0.0 adds a guided first-launch setup, configurable screen and audio hotkeys, normal and compact popup modes, a safe in-app bug-report flow, a per-user Windows installer, and major popup-rendering stability improvements.
 
 ## Download and Install
 
+### Installer (recommended)
+
 1. Open the latest release on GitHub.
-2. Download `NovaLens-v1.1.0-Windows-x64.zip`.
-3. Extract the entire ZIP file.
-4. Keep `NovaLens.exe` and the `_internal` folder together.
-5. Open `NovaLens.exe`.
-6. Add your own Gemini API key in Settings and save it.
+2. Download `NovaLens-Setup-v2.0.0-Windows-x64.exe`.
+3. Run the installer and follow the setup wizard.
+4. Open Nova Lens and complete the first-launch guide.
+
+### Portable ZIP
+
+1. Download `NovaLens-v2.0.0-Windows-x64.zip`.
+2. Extract the entire ZIP file.
+3. Keep `NovaLens.exe` and the `_internal` folder together.
+4. Open `NovaLens.exe` and complete the first-launch guide.
 
 Do not run the executable directly from inside the ZIP file.
 
 Windows may display a SmartScreen warning because Nova Lens is not currently code-signed.
+
+The optional `NovaLens-v2.0.0-Windows-x64.zip.sha256` file can be used to verify the portable download with `Get-FileHash` in PowerShell.
 
 ## First Launch
 
@@ -96,7 +106,7 @@ Neither file is included in the release package or committed to this repository.
 | Completely close Nova Lens | `P + Backspace` |
 | Alternative close shortcut | `P + Delete` |
 
-All six shortcuts can be changed from the Settings interface in Nova Lens 2.0.0.
+All six shortcuts can be changed from the Settings interface.
 
 ## How the Main Modes Work
 
@@ -104,7 +114,7 @@ All six shortcuts can be changed from the Settings interface in Nova Lens 2.0.0.
 
 Press `P + Enter`, write a question, and press Enter or click **Enviar**. Nova Lens sends the request to Gemini and displays the answer inside the same popup.
 
-The popup remains alive in the background while hidden. This avoids repeated native-window recreation and improves stability in the packaged Windows build.
+The popup remains alive in the background while hidden. Nova Lens synchronizes its native Windows surface before the first visible frame to keep compact and normal modes aligned on scaled displays.
 
 ### Screen analysis
 
@@ -181,6 +191,7 @@ NovaLens/
 ├── requirements-build.txt
 ├── requirements.txt
 ├── README.md
+├── RELEASE_NOTES_v2.0.0.md
 └── .gitignore
 ```
 
@@ -188,8 +199,8 @@ NovaLens/
 
 - `launcher.py`: packaged application entry point and AppData path configuration.
 - `main.py`: background process, global hotkeys, child processes, and rolling-audio control.
-- `popup.py`: source-mode text popup.
-- `popup_exe.py`: packaged popup implementation with stable hiding and animations.
+- `popup.py`: development entry point for the shared text-popup implementation.
+- `popup_exe.py`: shared source and packaged popup implementation with stable hiding and animations.
 - `multimodal.py`: scrollable screen-region and recent-audio response windows.
 - `screen_selector.py`: native screen-region selection and exact image capture.
 - `audio_indicator.py`: movable microphone activity bubble.
@@ -316,6 +327,7 @@ To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -Sk
 - [x] Scrollable screen and audio responses.
 - [x] Configurable screen and audio hotkeys.
 - [x] Compact and normal display modes.
+- [x] Stable first-frame popup rendering on scaled Windows displays.
 - [ ] Short video analysis.
 - [x] Official Discord server and community integration.
 - [x] Functional in-app error-reporting button.
