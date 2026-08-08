@@ -1,13 +1,11 @@
 # Nova Lens for Windows
 
 **Nova Lens — Powered by Google Gemini**
-
-<img width="904" height="218" alt="Nova Lens preview" src="https://github.com/user-attachments/assets/083ae6aa-8c52-4aeb-8336-89bb04f9b082" />
-
-
 Nova Lens is a Windows desktop AI assistant that runs in the background and gives you fast access to Google Gemini from any application.
 
 Use a floating popup for text questions, analyze a selected screen region, or ask about something spoken during a configurable recent-audio window.
+
+<img width="904" height="218" alt="Nova Lens preview" src="https://github.com/user-attachments/assets/083ae6aa-8c52-4aeb-8336-89bb04f9b082" />
 
 ## Current Release
 
