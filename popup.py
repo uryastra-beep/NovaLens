@@ -21,8 +21,8 @@ from config_manager import (
 )
 from localization import tr
 from popup_layout import (
-    apply_popup_width_constraints,
     calculate_popup_horizontal_geometry,
+    popup_viewport_matches,
 )
 from reporting import build_bug_report_url
 
@@ -196,7 +196,7 @@ async def main(page: ft.Page) -> None:
     popup: ft.Container
     zona_respuesta: ft.ListView | None = None
 
-    def aplicar_geometria(altura: int | float) -> int:
+    def aplicar_geometria(altura: int | float) -> tuple[int, int]:
         altura_segura = limitar_altura(altura)
         izquierda, arriba, ancho, alto = obtener_area_trabajo()
         izquierda_segura, ancho_seguro = calculate_popup_horizontal_geometry(
@@ -206,9 +206,9 @@ async def main(page: ft.Page) -> None:
             MODO_VISUALIZACION,
         )
 
-        apply_popup_width_constraints(page.window, ancho_seguro)
         page.window.min_height = ALTURA_MINIMA
         page.window.max_height = ALTURA_MAXIMA
+        page.window.width = ancho_seguro
         page.window.height = altura_segura
         page.window.left = izquierda_segura
 
@@ -223,7 +223,30 @@ async def main(page: ft.Page) -> None:
         if zona_respuesta is not None:
             zona_respuesta.height = calcular_altura_respuesta(altura_segura)
 
-        return altura_segura
+        return ancho_seguro, altura_segura
+
+    async def sincronizar_geometria(
+        altura: int | float,
+        intentos: int = 6,
+    ) -> tuple[int, int]:
+        """Wait until Flutter has adopted the requested native window bounds."""
+        ancho_esperado, altura_esperada = aplicar_geometria(altura)
+        page.update()
+
+        for _ in range(max(1, int(intentos))):
+            await asyncio.sleep(0.05)
+            if popup_viewport_matches(
+                page.width,
+                page.height,
+                ancho_esperado,
+                altura_esperada,
+            ):
+                break
+
+            ancho_esperado, altura_esperada = aplicar_geometria(altura)
+            page.update()
+
+        return ancho_esperado, altura_esperada
 
     page.title = "Nova Lens"
     page.padding = 0
@@ -235,7 +258,6 @@ async def main(page: ft.Page) -> None:
     page.window.always_on_top = True
     page.window.skip_task_bar = True
     page.window.resizable = False
-    page.window.maximizable = False
     page.window.shadow = False
     page.window.visible = False
     page.window.ignore_mouse_events = True
@@ -404,8 +426,6 @@ async def main(page: ft.Page) -> None:
         ventana_enfocada = True
         proteger_blur_hasta = time.monotonic() + PROTECCION_BLUR_AL_ABRIR
 
-        aplicar_geometria(altura_actual)
-
         if estaba_oculto:
             popup.opacity = 0
             popup.offset = ft.Offset(0, DESPLAZAMIENTO_INICIAL)
@@ -413,15 +433,14 @@ async def main(page: ft.Page) -> None:
             popup.opacity = 1
             popup.offset = ft.Offset(0, 0)
 
-        page.window.ignore_mouse_events = False
+        page.window.ignore_mouse_events = True
         page.window.visible = True
         page.update()
 
-        await asyncio.sleep(0.05)
+        await sincronizar_geometria(altura_actual)
         if activacion_actual != generacion_activacion:
             return
 
-        aplicar_geometria(altura_actual)
         page.window.ignore_mouse_events = False
         page.window.focused = True
         page.update()
@@ -488,7 +507,7 @@ async def main(page: ft.Page) -> None:
 
             if popup_visible:
                 page.window.ignore_mouse_events = False
-                aplicar_geometria(altura_actual)
+                await sincronizar_geometria(altura_actual, intentos=2)
                 reiniciar_temporizador()
             else:
                 page.window.ignore_mouse_events = True
@@ -557,7 +576,7 @@ async def main(page: ft.Page) -> None:
                 respuesta_limpia,
                 int(page.window.width or ancho_popup),
             )
-            aplicar_geometria(altura_actual)
+            await sincronizar_geometria(altura_actual)
 
         except Exception as error:
             respuesta_actual = str(error)

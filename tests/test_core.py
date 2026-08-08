@@ -17,8 +17,8 @@ import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
 from popup_layout import (
-    apply_popup_width_constraints,
     calculate_popup_horizontal_geometry,
+    popup_viewport_matches,
 )
 from reporting import build_bug_report_url, redact_secrets
 from rolling_audio import RollingAudioBuffer
@@ -504,23 +504,14 @@ class PopupLayoutTests(unittest.TestCase):
             (-1640, 720),
         )
 
-    def test_popup_width_is_pinned_before_first_render(self) -> None:
-        class Window:
-            full_screen = True
-            maximized = True
-            min_width = None
-            max_width = None
-            width = None
+    def test_popup_viewport_accepts_only_the_requested_geometry(self) -> None:
+        self.assertTrue(popup_viewport_matches(720, 165, 720, 165))
+        self.assertTrue(popup_viewport_matches(723, 162, 720, 165))
+        self.assertFalse(popup_viewport_matches(1280, 378, 720, 165))
 
-        window = Window()
-        applied_width = apply_popup_width_constraints(window, 720)
-
-        self.assertEqual(applied_width, 720)
-        self.assertFalse(window.full_screen)
-        self.assertFalse(window.maximized)
-        self.assertEqual(window.min_width, 720)
-        self.assertEqual(window.max_width, 720)
-        self.assertEqual(window.width, 720)
+    def test_popup_viewport_rejects_missing_or_invalid_dimensions(self) -> None:
+        self.assertFalse(popup_viewport_matches(None, 165, 720, 165))
+        self.assertFalse(popup_viewport_matches(float("nan"), 165, 720, 165))
 
 
 class BugReportingTests(unittest.TestCase):
