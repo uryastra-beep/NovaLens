@@ -44,6 +44,7 @@ SRCCOPY = 0x00CC0020
 CAPTUREBLT = 0x40000000
 DIB_RGB_COLORS = 0
 BI_RGB = 0
+RGN_ERROR = 0
 
 
 class BITMAPINFOHEADER(ctypes.Structure):
@@ -281,6 +282,31 @@ def _capturar_escritorio_virtual(
         user32.ReleaseDC(None, dc_pantalla)
 
 
+def _dibujar_region_original_sin_escalar(
+    dc: int,
+    dib_original: ImageWin.Dib,
+    gdi32,
+    seleccion: tuple[int, int, int, int],
+    ancho_virtual: int,
+    alto_virtual: int,
+) -> None:
+    """Reveal the selected area by clipping a single full-size desktop draw."""
+    estado_dc = gdi32.SaveDC(dc)
+    if not estado_dc:
+        return
+
+    try:
+        izq, sup, der, inf = seleccion
+        if gdi32.IntersectClipRect(dc, izq, sup, der, inf) == RGN_ERROR:
+            return
+
+        # Drawing the entire DIB into the same-size desktop rectangle avoids
+        # ImageWin stretching a source sub-rectangle on scaled Windows screens.
+        dib_original.draw(dc, (0, 0, ancho_virtual, alto_virtual))
+    finally:
+        gdi32.RestoreDC(dc, estado_dc)
+
+
 def seleccionar_region_pantalla_jpeg(
     instruccion: str,
     cancelar: str,
@@ -444,6 +470,18 @@ def seleccionar_region_pantalla_jpeg(
     gdi32.DeleteObject.argtypes = [wintypes.HANDLE]
     gdi32.SetBkMode.argtypes = [wintypes.HDC, ctypes.c_int]
     gdi32.SetTextColor.argtypes = [wintypes.HDC, wintypes.COLORREF]
+    gdi32.SaveDC.restype = ctypes.c_int
+    gdi32.SaveDC.argtypes = [wintypes.HDC]
+    gdi32.RestoreDC.restype = wintypes.BOOL
+    gdi32.RestoreDC.argtypes = [wintypes.HDC, ctypes.c_int]
+    gdi32.IntersectClipRect.restype = ctypes.c_int
+    gdi32.IntersectClipRect.argtypes = [
+        wintypes.HDC,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
 
     cursor_cruz = user32.LoadCursorW(None, ctypes.c_void_p(IDC_CROSS))
 
@@ -521,7 +559,14 @@ def seleccionar_region_pantalla_jpeg(
 
                 if seleccion is not None:
                     izq, sup, der, inf = seleccion
-                    dib_original.draw(dc, seleccion, seleccion)
+                    _dibujar_region_original_sin_escalar(
+                        dc,
+                        dib_original,
+                        gdi32,
+                        seleccion,
+                        ancho_virtual,
+                        alto_virtual,
+                    )
 
                     lapiz = gdi32.CreatePen(
                         PS_SOLID,
