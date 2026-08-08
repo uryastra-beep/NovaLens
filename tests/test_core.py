@@ -242,6 +242,33 @@ class ScreenRegionTests(unittest.TestCase):
         self.assertEqual(select_object.call_count, 2)
         user32.ReleaseDC.assert_called_once_with(None, 1)
 
+    def test_selected_preview_clips_one_full_size_draw(self) -> None:
+        dib = mock.Mock()
+        gdi32 = SimpleNamespace(
+            SaveDC=mock.Mock(return_value=7),
+            IntersectClipRect=mock.Mock(return_value=2),
+            RestoreDC=mock.Mock(return_value=1),
+        )
+
+        screen_selector._dibujar_region_original_sin_escalar(
+            11,
+            dib,
+            gdi32,
+            (100, 200, 500, 600),
+            1920,
+            1080,
+        )
+
+        gdi32.IntersectClipRect.assert_called_once_with(
+            11,
+            100,
+            200,
+            500,
+            600,
+        )
+        dib.draw.assert_called_once_with(11, (0, 0, 1920, 1080))
+        gdi32.RestoreDC.assert_called_once_with(11, 7)
+
 
 class RollingAudioBufferTests(unittest.TestCase):
     def test_shortening_duration_discards_old_pcm_immediately(self) -> None:
