@@ -79,6 +79,65 @@ mostrar_indicador_audio = True
 
 
 # ══════════════════════════════════════════════
+# CHILD PROCESS SHUTDOWN
+# ══════════════════════════════════════════════
+
+def terminar_arbol_proceso(
+    proceso: subprocess.Popen | None,
+    timeout: float = 1.0,
+) -> None:
+    """Stop one Nova Lens child and its Flet descendants on Windows."""
+    if proceso is None:
+        return
+
+    try:
+        if proceso.poll() is not None:
+            return
+    except Exception:
+        return
+
+    if os.name == "nt":
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        try:
+            resultado = subprocess.run(
+                [
+                    "taskkill.exe",
+                    "/PID",
+                    str(proceso.pid),
+                    "/T",
+                    "/F",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=max(2.0, timeout + 1.0),
+                creationflags=creation_flags,
+                check=False,
+            )
+
+            if resultado.returncode == 0:
+                try:
+                    proceso.wait(timeout=timeout)
+                except Exception:
+                    pass
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    try:
+        proceso.terminate()
+        proceso.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            proceso.kill()
+            proceso.wait(timeout=timeout)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════════
 # SINGLE INSTANCE
 # ══════════════════════════════════════════════
 
@@ -225,23 +284,10 @@ def detener_popup_residente() -> None:
     with bloqueo_estado:
         proceso = proceso_popup
 
-    if proceso is None or proceso.poll() is not None:
+    if proceso is None:
         return
 
-    enviar_comando("quit")
-
-    try:
-        proceso.wait(timeout=1.5)
-    except subprocess.TimeoutExpired:
-        try:
-            proceso.terminate()
-            proceso.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            proceso.kill()
-        except Exception:
-            pass
-    except Exception:
-        pass
+    terminar_arbol_proceso(proceso, timeout=1.5)
 
     with bloqueo_estado:
         if proceso_popup is proceso:
@@ -313,16 +359,7 @@ def detener_indicador_audio() -> None:
         proceso = proceso_indicador_audio
         proceso_indicador_audio = None
 
-    if proceso is None or proceso.poll() is not None:
-        return
-
-    try:
-        proceso.terminate()
-        proceso.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        proceso.kill()
-    except Exception:
-        pass
+    terminar_arbol_proceso(proceso)
 
 
 def sincronizar_indicador_audio() -> None:
@@ -638,16 +675,7 @@ def detener_procesos_multimodales() -> None:
         procesos_multimodales.clear()
 
     for proceso in procesos:
-        if proceso.poll() is not None:
-            continue
-
-        try:
-            proceso.terminate()
-            proceso.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            proceso.kill()
-        except Exception:
-            pass
+        terminar_arbol_proceso(proceso)
 
     eliminar_todos_los_audios_temporales()
 
@@ -844,14 +872,7 @@ def cerrar_novalens() -> None:
     with bloqueo_estado:
         proceso_config = proceso_configuracion
 
-    if proceso_config is not None and proceso_config.poll() is None:
-        try:
-            proceso_config.terminate()
-            proceso_config.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            proceso_config.kill()
-        except Exception:
-            pass
+    terminar_arbol_proceso(proceso_config)
 
     try:
         keyboard.unhook_all_hotkeys()
