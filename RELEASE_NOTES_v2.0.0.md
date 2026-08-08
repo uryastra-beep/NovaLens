@@ -9,7 +9,6 @@ Nova Lens v2.0.0 is the largest release of the Windows desktop assistant so far.
 - Added normal full-width and centered compact popup modes.
 - Made screen-region and recent-audio shortcuts fully configurable.
 - Added an in-app error-report button that opens a safe, prefilled GitHub draft for user review.
-- Preserved the portable Windows ZIP for users who prefer installation-free usage.
 
 ## Popup and Interface Stability
 
@@ -39,26 +38,13 @@ Nova Lens v2.0.0 is the largest release of the Windows desktop assistant so far.
 
 ## Installation
 
-### Windows installer (recommended)
-
 1. Download `NovaLens-Setup-v2.0.0-Windows-x64.exe`.
 2. Run the setup wizard.
 3. Open Nova Lens and complete the first-launch guide.
 
-### Portable ZIP
-
-1. Download `NovaLens-v2.0.0-Windows-x64.zip`.
-2. Extract the complete ZIP.
-3. Keep `NovaLens.exe` and the `_internal` folder together.
-4. Run `NovaLens.exe` and complete the first-launch guide.
-
-Do not run Nova Lens directly from inside the ZIP file.
-
-## Release Assets
+## Release Asset
 
 - `NovaLens-Setup-v2.0.0-Windows-x64.exe` — recommended Windows installer.
-- `NovaLens-v2.0.0-Windows-x64.zip` — portable application package.
-- `NovaLens-v2.0.0-Windows-x64.zip.sha256` — SHA-256 checksum for the portable ZIP.
 
 Windows may show a SmartScreen warning because Nova Lens is not currently code-signed.
 

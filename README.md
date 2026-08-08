@@ -10,8 +10,7 @@ Use a floating popup for text questions, analyze a selected screen region, or as
 
 - **Version:** `v2.0.0`
 - **Platform:** Windows x64
-- **Recommended download:** `NovaLens-Setup-v2.0.0-Windows-x64.exe`
-- **Portable download:** `NovaLens-v2.0.0-Windows-x64.zip`
+- **Download:** `NovaLens-Setup-v2.0.0-Windows-x64.exe`
 - **AI provider:** Google Gemini
 - **License:** No project license has been selected yet
 
@@ -21,25 +20,12 @@ Nova Lens 2.0.0 adds a guided first-launch setup, configurable screen and audio 
 
 ## Download and Install
 
-### Installer (recommended)
-
 1. Open the latest release on GitHub.
 2. Download `NovaLens-Setup-v2.0.0-Windows-x64.exe`.
 3. Run the installer and follow the setup wizard.
 4. Open Nova Lens and complete the first-launch guide.
 
-### Portable ZIP
-
-1. Download `NovaLens-v2.0.0-Windows-x64.zip`.
-2. Extract the entire ZIP file.
-3. Keep `NovaLens.exe` and the `_internal` folder together.
-4. Open `NovaLens.exe` and complete the first-launch guide.
-
-Do not run the executable directly from inside the ZIP file.
-
 Windows may display a SmartScreen warning because Nova Lens is not currently code-signed.
-
-The optional `NovaLens-v2.0.0-Windows-x64.zip.sha256` file can be used to verify the portable download with `Get-FileHash` in PowerShell.
 
 ## First Launch
 
@@ -90,7 +76,7 @@ Neither file is included in the release package or committed to this repository.
 - Customizable screen-region and recent-audio hotkeys.
 - Normal full-width and centered compact popup modes.
 - In-app bug-report button that opens a prefilled GitHub draft for review.
-- Per-user Windows installer alongside the portable ZIP.
+- Per-user Windows installer.
 - English and Spanish interface localization.
 - Optional startup with Windows.
 - Local API-key and settings storage.
@@ -139,7 +125,7 @@ In Settings, enable **Unlock floating bubbles to move them**, drag the microphon
 ## Privacy and Security
 
 - Your Gemini API key is stored locally in `%APPDATA%\NovaLens\.env`.
-- The API key is not bundled in the executable or release ZIP.
+- The API key is not bundled in the executable or installer.
 - The rolling microphone buffer is kept in RAM.
 - Older microphone audio is continuously overwritten.
 - Audio is sent to Gemini only after `P + Shift + A` is pressed.
