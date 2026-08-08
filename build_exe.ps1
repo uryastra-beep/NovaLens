@@ -7,10 +7,22 @@ $releaseName = "NovaLens-v$version-Windows-x64.zip"
 $releaseZip = Join-Path $PSScriptRoot $releaseName
 $checksumFile = "$releaseZip.sha256"
 
+function Stop-NovaLensProcessTrees {
+    # taskkill /T follows only NovaLens.exe process trees, including their Flet
+    # desktop children. It does not stop unrelated python.exe or flet.exe apps.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+
+    try {
+        & taskkill.exe /IM NovaLens.exe /T /F *> $null
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
 Write-Host "Stopping running Nova Lens processes..."
-# Never kill generic flet.exe or pythonw.exe processes: they may belong to
-# unrelated applications on the user's computer.
-Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Stop-NovaLensProcessTrees
 Start-Sleep -Seconds 2
 
 function Remove-DirectoryWithRetry {
@@ -73,7 +85,7 @@ function Compress-ReleaseWithRetry {
             }
 
             Write-Host "A packaged file is still locked. Retrying ZIP creation ($attempt/$Attempts)..."
-            Get-Process NovaLens -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Stop-NovaLensProcessTrees
             Start-Sleep -Seconds 3
         }
     }
