@@ -4,20 +4,20 @@
 
 Nova Lens is a Windows desktop AI assistant that runs in the background and gives you fast access to Google Gemini from any application.
 
-Use a floating popup for text questions, analyze the visible desktop, or ask about something spoken during the previous 10 seconds.
+Use a floating popup for text questions, analyze a selected screen region, or ask about something spoken during a configurable recent-audio window.
 
 ## Current Release
 
-- **Version:** `v1.0.1`
+- **Version:** `v1.1.0`
 - **Platform:** Windows x64
-- **Download:** `NovaLens-v1.0.1-Windows-x64.zip`
+- **Download:** `NovaLens-v1.1.0-Windows-x64.zip`
 - **AI provider:** Google Gemini
 - **License:** No project license has been selected yet
 
 ## Download and Install
 
 1. Open the latest release on GitHub.
-2. Download `NovaLens-v1.0.1-Windows-x64.zip`.
+2. Download `NovaLens-v1.1.0-Windows-x64.zip`.
 3. Extract the entire ZIP file.
 4. Keep `NovaLens.exe` and the `_internal` folder together.
 5. Open `NovaLens.exe`.
@@ -51,9 +51,13 @@ Neither file is included in the release package or committed to this repository.
 - Always-on-top floating text popup.
 - Text questions and follow-up questions.
 - Short conversation context inside the popup.
-- Full visible-desktop screenshot analysis.
-- Rolling 10-second microphone buffer stored in memory.
+- Selectable screen-region analysis.
+- Configurable rolling microphone buffer stored in memory.
 - Audio transcription followed by an automatic answer.
+- Scrollable screenshot and audio responses.
+- Microphone activity indicator.
+- Persistent Open / Close control bubble.
+- Movable audio and control bubbles with saved positions.
 - Entry and fade-out popup animations.
 - Automatic hiding after inactivity.
 - Click-through behavior after the popup loses focus.
@@ -63,7 +67,10 @@ Neither file is included in the release package or committed to this repository.
 - Graphical Settings interface.
 - Custom colors, transparency, font size, border radius, margin, and popup position.
 - Configurable auto-hide timer.
+- Configurable microphone capture duration from 3 to 30 seconds.
+- Optional microphone buffer and activity indicator.
 - Customizable text-popup and close hotkeys.
+- English and Spanish interface localization.
 - Optional startup with Windows.
 - Local API-key and settings storage.
 
@@ -73,14 +80,14 @@ Neither file is included in the release package or committed to this repository.
 |---|---|
 | Open or reactivate the text popup | `P + Enter` |
 | Open Settings | `P + Shift + Enter` |
-| Analyze the visible desktop | `P + Shift + S` |
+| Select and analyze a screen region | `P + Shift + S` |
 | Transcribe and answer the previous 10 seconds of microphone audio | `P + Shift + A` |
 | Completely close Nova Lens | `P + Backspace` |
 | Alternative close shortcut | `P + Delete` |
 
 The text-popup, Settings, and close shortcuts can be changed from the Settings interface.
 
-The screen and audio shortcuts are fixed in v1.0.1.
+The screen and audio shortcuts are fixed in v1.1.0.
 
 ## How the Main Modes Work
 
@@ -92,17 +99,23 @@ The popup remains alive in the background while hidden. This avoids repeated nat
 
 ### Screen analysis
 
-Press `P + Shift + S` to capture the full visible desktop across connected displays. Nova Lens sends the screenshot to Gemini and displays an answer in a temporary response window.
+Press `P + Shift + S` to open the screen selector. Drag over the exact region you want to analyze and release the mouse button. Nova Lens sends only that selected region to Gemini and displays the answer in a scrollable temporary response window.
 
-The current version captures the complete visible desktop. Region selection is not implemented yet.
+Press `Esc` or right-click to cancel the selection without sending an image.
 
 ### Recent audio
 
-While Nova Lens is running, it keeps only the newest 10 seconds of microphone input in a circular memory buffer. Older audio is continuously overwritten.
+While Nova Lens is running, it can keep the newest 3 to 30 seconds of microphone input in a circular memory buffer. The duration, microphone buffer, and activity indicator can be configured from Settings. Older audio is continuously overwritten.
 
 Press `P + Shift + A` to send a snapshot of that recent audio to Gemini for transcription and an answer.
 
 Nova Lens does not capture desktop or system audio. It uses the Windows default microphone input.
+
+### Floating controls
+
+Nova Lens includes a persistent control bubble with **Open** and **Close** buttons. **Open** activates the text popup, while **Close** hides only the text popup and leaves Nova Lens running.
+
+In Settings, enable **Unlock floating bubbles to move them**, drag the microphone indicator or the Open / Close bubble, and press **Save changes**. Their positions are stored locally and restored on the next launch.
 
 ## Privacy and Security
 
@@ -112,7 +125,7 @@ Nova Lens does not capture desktop or system audio. It uses the Windows default 
 - Older microphone audio is continuously overwritten.
 - Audio is sent to Gemini only after `P + Shift + A` is pressed.
 - A temporary WAV file is created only for processing and is deleted afterward.
-- A screenshot is sent to Gemini only after `P + Shift + S` is pressed.
+- A selected screen region is sent to Gemini only after the selection is completed.
 - Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
 - Never include API keys in screenshots, logs, issues, or public repositories.
 
@@ -120,13 +133,10 @@ Do not run Nova Lens around private conversations unless everyone present unders
 
 ## Known Limitations
 
-- Windows x64 is the only packaged platform in v1.0.1.
+- Windows x64 is the only packaged platform in v1.1.0.
 - The application is not code-signed and has no installer yet.
-- Screen analysis captures the entire visible desktop instead of a selected region.
 - Screen and audio hotkeys are not configurable yet.
-- The rolling-audio duration is fixed at 10 seconds.
 - The selected default Windows microphone must work correctly.
-- There is no tray indicator showing that the microphone buffer is active.
 - The **Informar error** button does not submit reports yet.
 - Video analysis is not implemented.
 - AI answers and transcriptions may be incorrect.
@@ -138,17 +148,23 @@ Do not run Nova Lens around private conversations unless everyone present unders
 NovaLens/
 ├── .github/
 │   └── workflows/
+├── audio_indicator.py
 ├── assets/
 ├── backend.py
+├── bubble_layout.py
 ├── build_exe.ps1
 ├── config.py
 ├── config_manager.py
+├── control_bubble.py
 ├── launcher.py
 ├── main.py
 ├── multimodal.py
+├── native_clickthrough.py
 ├── popup.py
 ├── popup_exe.py
 ├── rolling_audio.py
+├── screen_selector.py
+├── tests/
 ├── requirements-build.txt
 ├── requirements.txt
 ├── README.md
@@ -161,7 +177,12 @@ NovaLens/
 - `main.py`: background process, global hotkeys, child processes, and rolling-audio control.
 - `popup.py`: source-mode text popup.
 - `popup_exe.py`: packaged popup implementation with stable hiding and animations.
-- `multimodal.py`: screenshot and recent-audio response windows.
+- `multimodal.py`: scrollable screen-region and recent-audio response windows.
+- `screen_selector.py`: native screen-region selection and exact image capture.
+- `audio_indicator.py`: movable microphone activity bubble.
+- `control_bubble.py`: persistent Open / Close control bubble.
+- `bubble_layout.py`: local floating-bubble position and unlock-state management.
+- `native_clickthrough.py`: native Windows click-through protection.
 - `rolling_audio.py`: circular in-memory microphone buffer.
 - `backend.py`: Google Gemini text, image, and audio requests.
 - `config.py`: graphical Settings interface.
@@ -231,8 +252,8 @@ The script stops old Nova Lens processes, removes previous build folders, instal
 
 ```text
 dist\NovaLens\NovaLens.exe
-NovaLens-v1.0.1-Windows-x64.zip
-NovaLens-v1.0.1-Windows-x64.zip.sha256
+NovaLens-v1.1.0-Windows-x64.zip
+NovaLens-v1.1.0-Windows-x64.zip.sha256
 ```
 
 The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.exe` and `_internal`.
@@ -250,15 +271,17 @@ The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.ex
 - [x] Graphical Settings interface.
 - [x] Custom appearance and text-popup hotkeys.
 - [x] Optional startup with Windows.
-- [x] Full-desktop screenshot analysis.
-- [x] Rolling 10-second microphone buffer.
+- [x] Selectable screen-region analysis.
+- [x] Configurable rolling microphone buffer.
 - [x] Audio transcription and automatic answers.
 - [x] Windows x64 executable package.
-- [ ] Microphone activity indicator.
-- [ ] Enable or disable rolling audio from Settings.
-- [ ] Configurable rolling-audio duration.
+- [x] Microphone activity indicator.
+- [x] Enable or disable rolling audio from Settings.
+- [x] Configurable rolling-audio duration.
+- [x] Persistent Open / Close control bubble.
+- [x] Movable floating bubbles with saved positions.
+- [x] Scrollable screen and audio responses.
 - [ ] Configurable screen and audio hotkeys.
-- [ ] Screen region selection.
 - [ ] Compact and normal display modes.
 - [ ] Short video analysis.
 - [x] Official Discord server and community integration.
