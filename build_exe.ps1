@@ -2,7 +2,10 @@ $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
 
-$version = "1.1.0"
+$version = (python -c "from app_info import APP_VERSION; print(APP_VERSION)").Trim()
+if (-not $version) {
+    throw "Nova Lens version could not be read from app_info.py."
+}
 $releaseName = "NovaLens-v$version-Windows-x64.zip"
 $releaseZip = Join-Path $PSScriptRoot $releaseName
 $checksumFile = "$releaseZip.sha256"
@@ -128,7 +131,7 @@ $packArguments = @(
     "--file-description", "Nova Lens desktop AI assistant",
     "--company-name", "Nova Lens",
     "--copyright", "Copyright (c) 2026 Nova Lens",
-    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "audio_indicator", "bubble_layout", "control_bubble", "screen_selector", "native_clickthrough", "localization",
+    "--hidden-import", "popup", "popup_exe", "config", "multimodal", "audio_indicator", "bubble_layout", "control_bubble", "screen_selector", "native_clickthrough", "localization", "app_info", "popup_layout", "reporting",
     "--add-data", "popup.py;.", "popup_exe.py;.", "config.py;.", "multimodal.py;.", "audio_indicator.py;.", "control_bubble.py;."
 )
 

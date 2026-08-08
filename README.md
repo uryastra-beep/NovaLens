@@ -14,6 +14,10 @@ Use a floating popup for text questions, analyze a selected screen region, or as
 - **AI provider:** Google Gemini
 - **License:** No project license has been selected yet
 
+## Version 2.0.0 Development
+
+Nova Lens 2.0.0 is currently under development. It adds configurable screen and audio hotkeys, normal and compact popup modes, a safe in-app bug-report flow, and a per-user Windows installer. The latest stable public release remains v1.1.0 until v2.0.0 testing is complete.
+
 ## Download and Install
 
 1. Open the latest release on GitHub.
@@ -70,6 +74,10 @@ Neither file is included in the release package or committed to this repository.
 - Configurable microphone capture duration from 3 to 30 seconds.
 - Optional microphone buffer and activity indicator.
 - Customizable text-popup and close hotkeys.
+- Customizable screen-region and recent-audio hotkeys.
+- Normal full-width and centered compact popup modes.
+- In-app bug-report button that opens a prefilled GitHub draft for review.
+- Per-user Windows installer alongside the portable ZIP.
 - English and Spanish interface localization.
 - Optional startup with Windows.
 - Local API-key and settings storage.
@@ -85,9 +93,7 @@ Neither file is included in the release package or committed to this repository.
 | Completely close Nova Lens | `P + Backspace` |
 | Alternative close shortcut | `P + Delete` |
 
-The text-popup, Settings, and close shortcuts can be changed from the Settings interface.
-
-The screen and audio shortcuts are fixed in v1.1.0.
+All six shortcuts can be changed from the Settings interface in Nova Lens 2.0.0.
 
 ## How the Main Modes Work
 
@@ -128,16 +134,16 @@ In Settings, enable **Unlock floating bubbles to move them**, drag the microphon
 - A selected screen region is sent to Gemini only after the selection is completed.
 - Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
 - Never include API keys in screenshots, logs, issues, or public repositories.
+- The in-app report button creates only a local browser draft; the user reviews and submits it manually.
 
 Do not run Nova Lens around private conversations unless everyone present understands that the rolling microphone buffer is active.
 
 ## Known Limitations
 
-- Windows x64 is the only packaged platform in v1.1.0.
-- The application is not code-signed and has no installer yet.
-- Screen and audio hotkeys are not configurable yet.
+- Windows x64 is the only packaged platform.
+- The application and installer are not code-signed yet.
 - The selected default Windows microphone must work correctly.
-- The **Informar error** button does not submit reports yet.
+- Reporting an error requires a browser and a GitHub account to submit the draft.
 - Video analysis is not implemented.
 - AI answers and transcriptions may be incorrect.
 - Gemini access depends on the user's Google project, API key status, quota, and service availability.
@@ -149,10 +155,12 @@ NovaLens/
 ├── .github/
 │   └── workflows/
 ├── audio_indicator.py
+├── app_info.py
 ├── assets/
 ├── backend.py
 ├── bubble_layout.py
 ├── build_exe.ps1
+├── build_installer.ps1
 ├── config.py
 ├── config_manager.py
 ├── control_bubble.py
@@ -162,6 +170,8 @@ NovaLens/
 ├── native_clickthrough.py
 ├── popup.py
 ├── popup_exe.py
+├── popup_layout.py
+├── reporting.py
 ├── rolling_audio.py
 ├── screen_selector.py
 ├── tests/
@@ -188,6 +198,8 @@ NovaLens/
 - `config.py`: graphical Settings interface.
 - `config_manager.py`: local configuration, API-key storage, and Windows startup management.
 - `build_exe.ps1`: clean Windows build, ZIP packaging, and SHA-256 checksum generation.
+- `build_installer.ps1`: Inno Setup build and installer checksum generation.
+- `installer/NovaLens.iss`: per-user Windows installer definition.
 
 ## Run from Source
 
@@ -252,11 +264,28 @@ The script stops old Nova Lens processes, removes previous build folders, instal
 
 ```text
 dist\NovaLens\NovaLens.exe
-NovaLens-v1.1.0-Windows-x64.zip
-NovaLens-v1.1.0-Windows-x64.zip.sha256
+NovaLens-v2.0.0-Windows-x64.zip
+NovaLens-v2.0.0-Windows-x64.zip.sha256
 ```
 
 The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.exe` and `_internal`.
+
+### Build the Windows installer
+
+Install Inno Setup 6, then run:
+
+```powershell
+.\build_installer.ps1
+```
+
+This builds the portable application first and then creates:
+
+```text
+installer-output\NovaLens-Setup-v2.0.0-Windows-x64.exe
+installer-output\NovaLens-Setup-v2.0.0-Windows-x64.exe.sha256
+```
+
+To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -SkipPortableBuild`.
 
 ## Development Roadmap
 
@@ -281,12 +310,13 @@ The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.ex
 - [x] Persistent Open / Close control bubble.
 - [x] Movable floating bubbles with saved positions.
 - [x] Scrollable screen and audio responses.
-- [ ] Configurable screen and audio hotkeys.
-- [ ] Compact and normal display modes.
+- [x] Configurable screen and audio hotkeys.
+- [x] Compact and normal display modes.
 - [ ] Short video analysis.
 - [x] Official Discord server and community integration.
-- [ ] Functional in-app error-reporting button.
-- [ ] Windows installer and code signing.
+- [x] Functional in-app error-reporting button.
+- [x] Windows installer build.
+- [ ] Code signing.
 - [ ] Native Linux version.
 
 ## Support and Community

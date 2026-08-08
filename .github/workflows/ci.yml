@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "fix/**"
+      - "feature/**"
   pull_request:
     branches:
       - main
@@ -34,7 +35,7 @@ jobs:
 
       - name: Compile Python sources
         shell: pwsh
-        run: python -m compileall -q audio_indicator.py backend.py bubble_layout.py config.py config_manager.py control_bubble.py launcher.py localization.py main.py multimodal.py native_clickthrough.py popup.py popup_exe.py rolling_audio.py screen_selector.py
+        run: python -m compileall -q app_info.py audio_indicator.py backend.py bubble_layout.py config.py config_manager.py control_bubble.py launcher.py localization.py main.py multimodal.py native_clickthrough.py popup.py popup_exe.py popup_layout.py reporting.py rolling_audio.py screen_selector.py
 
       - name: Run regression tests
         shell: pwsh

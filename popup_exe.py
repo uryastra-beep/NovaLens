@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+import webbrowser
 from pathlib import Path
 
 import flet as ft
@@ -19,6 +20,8 @@ from config_manager import (
     color_con_transparencia,
 )
 from localization import tr
+from popup_layout import calculate_popup_horizontal_geometry
+from reporting import build_bug_report_url
 
 
 if len(sys.argv) < 2:
@@ -44,6 +47,8 @@ TAMANO_FUENTE = APARIENCIA["font_size"]
 RADIO_BORDES = APARIENCIA["border_radius"]
 MARGEN_PANTALLA = APARIENCIA["margin"]
 POSICION_POPUP = APARIENCIA["position"]
+MODO_VISUALIZACION = APARIENCIA["display_mode"]
+MODO_COMPACTO = MODO_VISUALIZACION == "compact"
 
 TIEMPO_VISIBLE = COMPORTAMIENTO["visible_seconds"]
 OCULTAR_AL_PERDER_FOCO = COMPORTAMIENTO["click_through_on_blur"]
@@ -164,11 +169,17 @@ def calcular_altura_respuesta(altura_popup: int | float) -> int:
 
 
 async def main(page: ft.Page) -> None:
-    _, _, ancho_area, _ = obtener_area_trabajo()
-    ancho_popup = max(420, ancho_area - MARGEN_PANTALLA * 2)
+    izquierda_area, _, ancho_area, _ = obtener_area_trabajo()
+    _, ancho_popup = calculate_popup_horizontal_geometry(
+        izquierda_area,
+        ancho_area,
+        MARGEN_PANTALLA,
+        MODO_VISUALIZACION,
+    )
 
     altura_actual = calcular_altura(RESPUESTA_INICIAL, ancho_popup)
     respuesta_actual = RESPUESTA_INICIAL
+    ultimo_error = ""
     historial: list[tuple[str, str]] = []
 
     popup_visible = False
@@ -192,14 +203,19 @@ async def main(page: ft.Page) -> None:
     def aplicar_geometria(altura: int | float) -> int:
         altura_segura = limitar_altura(altura)
         izquierda, arriba, ancho, alto = obtener_area_trabajo()
-        ancho_seguro = max(420, ancho - MARGEN_PANTALLA * 2)
+        izquierda_segura, ancho_seguro = calculate_popup_horizontal_geometry(
+            izquierda,
+            ancho,
+            MARGEN_PANTALLA,
+            MODO_VISUALIZACION,
+        )
 
         page.window.min_width = 420
         page.window.min_height = ALTURA_MINIMA
         page.window.max_height = ALTURA_MAXIMA
         page.window.width = ancho_seguro
         page.window.height = altura_segura
-        page.window.left = izquierda + MARGEN_PANTALLA
+        page.window.left = izquierda_segura
 
         if POSICION_POPUP == "bottom":
             page.window.top = max(
@@ -440,6 +456,7 @@ async def main(page: ft.Page) -> None:
         nonlocal procesando
         nonlocal respuesta_actual
         nonlocal altura_actual
+        nonlocal ultimo_error
 
         if procesando or cerrando:
             return
@@ -473,6 +490,7 @@ async def main(page: ft.Page) -> None:
             nueva_respuesta = (nueva_respuesta or "").strip() or tr("no_text")
 
             respuesta_actual = nueva_respuesta
+            ultimo_error = ""
             historial.append((nueva_pregunta, nueva_respuesta))
 
             if len(historial) > 8:
@@ -493,6 +511,7 @@ async def main(page: ft.Page) -> None:
             # Backend failures are displayed but never stored as conversation
             # history, so auth/debug text cannot contaminate later prompts.
             respuesta_actual = str(error)
+            ultimo_error = respuesta_actual
             texto_respuesta.value = limpiar_markdown_basico(respuesta_actual)
             mensaje_estado.value = tr("error_occurred")
 
@@ -536,7 +555,14 @@ async def main(page: ft.Page) -> None:
 
     async def informar_error(e=None) -> None:
         registrar_interaccion()
-        mensaje_estado.value = tr("report_later")
+        url = build_bug_report_url("text popup", ultimo_error)
+        try:
+            abierto = await asyncio.to_thread(webbrowser.open, url, 2)
+        except Exception:
+            abierto = False
+        mensaje_estado.value = (
+            tr("report_opened") if abierto else tr("report_open_failed")
+        )
         page.update()
 
     async def boton_ocultar(e=None) -> None:
@@ -643,6 +669,7 @@ async def main(page: ft.Page) -> None:
                 tr("powered_by"),
                 color=COLOR_SECUNDARIO,
                 size=12,
+                visible=not MODO_COMPACTO,
             ),
             ft.Container(expand=True),
             indicador,
@@ -748,7 +775,12 @@ async def main(page: ft.Page) -> None:
         border=ft.Border.all(width=1, color=COLOR_BORDE),
         border_radius=ft.BorderRadius.all(RADIO_BORDES),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        padding=ft.Padding(left=24, right=24, top=12, bottom=8),
+        padding=ft.Padding(
+            left=16 if MODO_COMPACTO else 24,
+            right=16 if MODO_COMPACTO else 24,
+            top=12,
+            bottom=8,
+        ),
         content=contenido,
         opacity=0,
         offset=ft.Offset(0, DESPLAZAMIENTO_INICIAL),

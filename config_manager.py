@@ -28,6 +28,7 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
         "border_radius": 20,
         "margin": 8,
         "position": "top",
+        "display_mode": "normal",
     },
     "behavior": {
         "visible_seconds": 10,
@@ -46,6 +47,8 @@ CONFIGURACION_PREDETERMINADA: dict[str, Any] = {
     "hotkeys": {
         "open": "p+enter",
         "settings": "p+shift+enter",
+        "screen": "p+shift+s",
+        "audio": "p+shift+a",
         "close": "p+backspace",
         "close_alt": "p+delete",
     },
@@ -155,6 +158,11 @@ def validar_configuracion(datos: Any) -> dict[str, Any]:
         apariencia.get("position")
         if apariencia.get("position") in {"top", "bottom"}
         else "top"
+    )
+    apariencia["display_mode"] = (
+        apariencia.get("display_mode")
+        if apariencia.get("display_mode") in {"normal", "compact"}
+        else "normal"
     )
 
     comportamiento = _seccion_dict(config, "behavior")

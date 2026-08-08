@@ -60,9 +60,6 @@ ARCHIVO_POSICION_CONTROL_BORRADOR = (
     / f"novalens_control_position_{os.getpid()}.json"
 )
 
-ATAJO_PANTALLA = "p+shift+s"
-ATAJO_AUDIO = "p+shift+a"
-
 FRECUENCIA_AUDIO = 16_000
 
 
@@ -977,17 +974,15 @@ def registrar_atajos(config: dict | None = None) -> None:
 
         usados: set[str] = set()
 
-        # Fixed multimodal shortcuts always win. A custom shortcut that tries
-        # to reuse one of these falls back to its own default instead.
         agregar_atajo_seguro(
-            ATAJO_PANTALLA,
-            ATAJO_PANTALLA,
+            atajos["screen"],
+            predeterminados["screen"],
             analizar_pantalla,
             usados,
         )
         agregar_atajo_seguro(
-            ATAJO_AUDIO,
-            ATAJO_AUDIO,
+            atajos["audio"],
+            predeterminados["audio"],
             responder_audio_anterior,
             usados,
         )

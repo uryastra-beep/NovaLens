@@ -8,6 +8,7 @@ from typing import Any
 import flet as ft
 import keyboard
 
+from app_info import APP_VERSION
 from bubble_layout import (
     eliminar_archivo_sesion,
     escribir_estado_desbloqueo,
@@ -34,8 +35,6 @@ ACENTO = "#A86F4B"
 BORDE = "#513A2E"
 ERROR = "#FF8A80"
 EXITO = "#9BE59B"
-
-ATAJOS_FIJOS = {"p+shift+s", "p+shift+a"}
 
 TRADUCCIONES = {
     "english": {
@@ -65,6 +64,9 @@ TRADUCCIONES = {
         "position": "Popup position",
         "top": "Top",
         "bottom": "Bottom",
+        "display_mode": "Display mode",
+        "normal_mode": "Normal",
+        "compact_mode": "Compact",
         "transparency": "Transparency",
         "font_size": "Font size",
         "radius": "Rounded corners",
@@ -81,17 +83,18 @@ TRADUCCIONES = {
         "audio_enabled": "Keep recent microphone audio available",
         "audio_duration": "Audio duration",
         "audio_indicator": "Show the microphone activity indicator",
-        "audio_privacy": "Audio stays only in memory until you use P + Shift + A. Disabling this option stops the microphone immediately.",
+        "audio_privacy": "Audio stays only in memory until you use {shortcut}. Disabling this option stops the microphone immediately.",
         "screen_capture": "Screen region",
         "screen_capture_sub": "Choose exactly which part of the screen Gemini receives.",
-        "screen_region_help": "Press P + Shift + S, drag a rectangle, and release to analyze only that region. Press Esc or right-click to cancel.",
+        "screen_region_help": "Press {shortcut}, drag a rectangle, and release to analyze only that region. Press Esc or right-click to cancel.",
         "hotkeys": "Keyboard shortcuts",
         "hotkeys_sub": "Use key+key format. Changes apply after saving.",
         "open": "Open or reactivate",
         "settings": "Open Settings",
+        "screen_hotkey": "Analyze screen region",
+        "audio_hotkey": "Analyze recent audio",
         "close": "Close Nova Lens",
         "close_alt": "Alternative close shortcut",
-        "fixed_hotkeys": "Screen region (P + Shift + S) and recent audio (P + Shift + A) shortcuts are fixed in v1.1.0.",
         "system": "System",
         "system_sub": "Control how Nova Lens starts in Windows.",
         "startup": "Start Nova Lens automatically with Windows",
@@ -104,7 +107,6 @@ TRADUCCIONES = {
         "empty_hotkey": "Shortcuts cannot be empty: {fields}",
         "invalid_hotkey": "Invalid shortcut format in: {fields}",
         "duplicate_hotkey": "Each shortcut must be unique. Duplicated: {fields}",
-        "fixed_collision": "These shortcuts are reserved for screenshot/audio and cannot be reused: {fields}",
         "save_error": "Could not save settings: {error}",
         "restore_error": "Could not restore settings: {error}",
     },
@@ -135,6 +137,9 @@ TRADUCCIONES = {
         "position": "Posición del popup",
         "top": "Arriba",
         "bottom": "Abajo",
+        "display_mode": "Modo de visualización",
+        "normal_mode": "Normal",
+        "compact_mode": "Compacto",
         "transparency": "Transparencia",
         "font_size": "Tamaño de fuente",
         "radius": "Bordes redondeados",
@@ -151,17 +156,18 @@ TRADUCCIONES = {
         "audio_enabled": "Mantener disponible el audio reciente del micrófono",
         "audio_duration": "Duración del audio",
         "audio_indicator": "Mostrar el indicador de actividad del micrófono",
-        "audio_privacy": "El audio permanece solo en memoria hasta que usás P + Shift + A. Desactivar esta opción detiene el micrófono inmediatamente.",
+        "audio_privacy": "El audio permanece solo en memoria hasta que usás {shortcut}. Desactivar esta opción detiene el micrófono inmediatamente.",
         "screen_capture": "Región de pantalla",
         "screen_capture_sub": "Elegí exactamente qué parte de la pantalla recibe Gemini.",
-        "screen_region_help": "Presioná P + Shift + S, arrastrá un rectángulo y soltá para analizar solo esa región. Presioná Esc o hacé clic derecho para cancelar.",
+        "screen_region_help": "Presioná {shortcut}, arrastrá un rectángulo y soltá para analizar solo esa región. Presioná Esc o hacé clic derecho para cancelar.",
         "hotkeys": "Atajos de teclado",
         "hotkeys_sub": "Usá el formato tecla+tecla. Los cambios se aplican al guardar.",
         "open": "Abrir o reactivar",
         "settings": "Abrir configuración",
+        "screen_hotkey": "Analizar región de pantalla",
+        "audio_hotkey": "Analizar audio reciente",
         "close": "Cerrar Nova Lens",
         "close_alt": "Atajo alternativo para cerrar",
-        "fixed_hotkeys": "Los atajos de región de pantalla (P + Shift + S) y audio reciente (P + Shift + A) son fijos en v1.1.0.",
         "system": "Sistema",
         "system_sub": "Controlá cómo se inicia Nova Lens en Windows.",
         "startup": "Iniciar Nova Lens automáticamente con Windows",
@@ -174,7 +180,6 @@ TRADUCCIONES = {
         "empty_hotkey": "No podés dejar atajos vacíos: {fields}",
         "invalid_hotkey": "Formato de atajo inválido en: {fields}",
         "duplicate_hotkey": "Cada atajo debe ser único. Repetidos: {fields}",
-        "fixed_collision": "Estos atajos están reservados para pantalla/audio y no se pueden reutilizar: {fields}",
         "save_error": "No pude guardar la configuración: {error}",
         "restore_error": "No pude restaurar la configuración: {error}",
     },
@@ -291,6 +296,20 @@ async def main(page: ft.Page) -> None:
             ft.DropdownOption(key="bottom", text=t["bottom"]),
         ],
     )
+    modo_visual = ft.Dropdown(
+        label=t["display_mode"],
+        value=apariencia["display_mode"],
+        width=260,
+        filled=True,
+        fill_color=PANEL_SECUNDARIO,
+        border_color=BORDE,
+        focused_border_color=ACENTO,
+        color=TEXTO,
+        options=[
+            ft.DropdownOption(key="normal", text=t["normal_mode"]),
+            ft.DropdownOption(key="compact", text=t["compact_mode"]),
+        ],
+    )
 
     click_through = ft.Switch(
         label=t["click_through"],
@@ -339,6 +358,8 @@ async def main(page: ft.Page) -> None:
 
     atajo_abrir = campo(t["open"], atajos["open"], "p+enter", 310)
     atajo_config = campo(t["settings"], atajos["settings"], "p+shift+enter", 310)
+    atajo_pantalla = campo(t["screen_hotkey"], atajos["screen"], "p+shift+s", 310)
+    atajo_audio = campo(t["audio_hotkey"], atajos["audio"], "p+shift+a", 310)
     atajo_cerrar = campo(t["close"], atajos["close"], "p+backspace", 310)
     atajo_cerrar_alt = campo(t["close_alt"], atajos["close_alt"], "p+delete", 310)
 
@@ -416,6 +437,8 @@ async def main(page: ft.Page) -> None:
         campos_atajos = {
             t["open"]: normalizar_atajo(atajo_abrir.value),
             t["settings"]: normalizar_atajo(atajo_config.value),
+            t["screen_hotkey"]: normalizar_atajo(atajo_pantalla.value),
+            t["audio_hotkey"]: normalizar_atajo(atajo_audio.value),
             t["close"]: normalizar_atajo(atajo_cerrar.value),
             t["close_alt"]: normalizar_atajo(atajo_cerrar_alt.value),
         }
@@ -447,15 +470,6 @@ async def main(page: ft.Page) -> None:
             mostrar_estado(t["duplicate_hotkey"].format(fields="; ".join(repetidos)), False)
             return None
 
-        colisiones = [
-            nombre
-            for nombre, valor in campos_atajos.items()
-            if valor in ATAJOS_FIJOS
-        ]
-        if colisiones:
-            mostrar_estado(t["fixed_collision"].format(fields=", ".join(colisiones)), False)
-            return None
-
         posiciones = copy.deepcopy(posiciones_guardadas)
         posicion_audio = leer_posicion(archivo_posicion_audio)
         posicion_control = leer_posicion(archivo_posicion_control)
@@ -475,6 +489,7 @@ async def main(page: ft.Page) -> None:
                 "border_radius": round(radio.value or 0),
                 "margin": round(margen.value or 0),
                 "position": posicion.value or "top",
+                "display_mode": modo_visual.value or "normal",
             },
             "behavior": {
                 "visible_seconds": round(tiempo.value or 10),
@@ -490,6 +505,8 @@ async def main(page: ft.Page) -> None:
             "hotkeys": {
                 "open": campos_atajos[t["open"]],
                 "settings": campos_atajos[t["settings"]],
+                "screen": campos_atajos[t["screen_hotkey"]],
+                "audio": campos_atajos[t["audio_hotkey"]],
                 "close": campos_atajos[t["close"]],
                 "close_alt": campos_atajos[t["close_alt"]],
             },
@@ -519,6 +536,7 @@ async def main(page: ft.Page) -> None:
         radio.value = ap["border_radius"]
         margen.value = ap["margin"]
         posicion.value = ap["position"]
+        modo_visual.value = ap["display_mode"]
         tiempo.value = beh["visible_seconds"]
         click_through.value = beh["click_through_on_blur"]
         burbuja_control.value = beh["show_control_bubble"]
@@ -529,6 +547,8 @@ async def main(page: ft.Page) -> None:
         escribir_estado_desbloqueo(archivo_desbloqueo, False)
         atajo_abrir.value = hk["open"]
         atajo_config.value = hk["settings"]
+        atajo_pantalla.value = hk["screen"]
+        atajo_audio.value = hk["audio"]
         atajo_cerrar.value = hk["close"]
         atajo_cerrar_alt.value = hk["close_alt"]
         inicio_windows.value = syscfg["start_with_windows"]
@@ -617,7 +637,7 @@ async def main(page: ft.Page) -> None:
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Text("1.1.0", color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
+                    ft.Text(APP_VERSION, color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
                 ]
             ),
             estado,
@@ -641,7 +661,7 @@ async def main(page: ft.Page) -> None:
                 t["appearance_sub"],
                 [
                     ft.Row(controls=[color_principal, color_texto, color_secundario], wrap=True, spacing=12),
-                    ft.Row(controls=[color_borde, posicion], wrap=True, spacing=12),
+                    ft.Row(controls=[color_borde, posicion, modo_visual], wrap=True, spacing=12),
                     fila_slider(t["transparency"], transparencia, "%"),
                     fila_slider(t["font_size"], fuente, "px"),
                     fila_slider(t["radius"], radio, "px"),
@@ -670,21 +690,31 @@ async def main(page: ft.Page) -> None:
                     audio_habilitado,
                     fila_slider(t["audio_duration"], duracion_audio, "s"),
                     indicador_audio,
-                    ft.Text(t["audio_privacy"], size=12, color=TEXTO_SECUNDARIO),
+                    ft.Text(
+                        t["audio_privacy"].format(shortcut=atajos["audio"]),
+                        size=12,
+                        color=TEXTO_SECUNDARIO,
+                    ),
                 ],
             ),
             tarjeta(
                 t["screen_capture"],
                 t["screen_capture_sub"],
-                [ft.Text(t["screen_region_help"], size=12, color=TEXTO_SECUNDARIO)],
+                [
+                    ft.Text(
+                        t["screen_region_help"].format(shortcut=atajos["screen"]),
+                        size=12,
+                        color=TEXTO_SECUNDARIO,
+                    )
+                ],
             ),
             tarjeta(
                 t["hotkeys"],
                 t["hotkeys_sub"],
                 [
                     ft.Row(controls=[atajo_abrir, atajo_config], wrap=True, spacing=12),
+                    ft.Row(controls=[atajo_pantalla, atajo_audio], wrap=True, spacing=12),
                     ft.Row(controls=[atajo_cerrar, atajo_cerrar_alt], wrap=True, spacing=12),
-                    ft.Text(t["fixed_hotkeys"], size=12, color=TEXTO_SECUNDARIO),
                 ],
             ),
             tarjeta(t["system"], t["system_sub"], [inicio_windows]),

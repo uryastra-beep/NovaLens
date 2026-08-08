@@ -16,6 +16,8 @@ import main as novalens_main
 import screen_selector
 from backend import _extraer_texto_rest
 from config_manager import cargar_api_key, validar_configuracion
+from popup_layout import calculate_popup_horizontal_geometry
+from reporting import build_bug_report_url, redact_secrets
 from rolling_audio import RollingAudioBuffer
 from screen_selector import normalizar_region
 
@@ -41,7 +43,25 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(config["audio"]["duration_seconds"], 10)
         self.assertIsNone(config["bubble_positions"]["audio"]["left"])
         self.assertEqual(config["hotkeys"]["open"], "p+enter")
+        self.assertEqual(config["hotkeys"]["screen"], "p+shift+s")
+        self.assertEqual(config["hotkeys"]["audio"], "p+shift+a")
+        self.assertEqual(config["appearance"]["display_mode"], "normal")
         self.assertEqual(config["system"]["language"], "english")
+
+    def test_display_mode_and_multimodal_hotkeys_are_normalized(self) -> None:
+        config = validar_configuracion(
+            {
+                "appearance": {"display_mode": "compact"},
+                "hotkeys": {
+                    "screen": "CTRL+SHIFT+S",
+                    "audio": "CTRL+SHIFT+A",
+                },
+            }
+        )
+
+        self.assertEqual(config["appearance"]["display_mode"], "compact")
+        self.assertEqual(config["hotkeys"]["screen"], "ctrl+shift+s")
+        self.assertEqual(config["hotkeys"]["audio"], "ctrl+shift+a")
 
     def test_string_false_is_not_treated_as_true(self) -> None:
         config = validar_configuracion(
@@ -403,6 +423,63 @@ class ControlBubbleTests(unittest.TestCase):
             create=True,
         ):
             self.assertTrue(novalens_main.archivo_hijo_disponible(missing))
+
+
+class DynamicHotkeyTests(unittest.TestCase):
+    def test_screen_and_audio_hotkeys_come_from_saved_configuration(self) -> None:
+        config = validar_configuracion(
+            {
+                "hotkeys": {
+                    "screen": "ctrl+shift+s",
+                    "audio": "ctrl+shift+a",
+                }
+            }
+        )
+
+        with (
+            patch.object(novalens_main, "quitar_atajos_registrados"),
+            patch.object(novalens_main, "agregar_atajo_seguro") as agregar,
+        ):
+            novalens_main.registrar_atajos(config)
+
+        shortcuts = [call.args[0] for call in agregar.call_args_list]
+        self.assertEqual(shortcuts[:2], ["ctrl+shift+s", "ctrl+shift+a"])
+
+
+class PopupLayoutTests(unittest.TestCase):
+    def test_normal_mode_uses_the_available_work_area(self) -> None:
+        self.assertEqual(
+            calculate_popup_horizontal_geometry(0, 1920, 8, "normal"),
+            (8, 1904),
+        )
+
+    def test_compact_mode_is_centered_and_bounded(self) -> None:
+        self.assertEqual(
+            calculate_popup_horizontal_geometry(0, 1920, 8, "compact"),
+            (600, 720),
+        )
+        self.assertEqual(
+            calculate_popup_horizontal_geometry(-1920, 1280, 8, "compact"),
+            (-1640, 720),
+        )
+
+
+class BugReportingTests(unittest.TestCase):
+    def test_bug_report_opens_a_prefilled_draft_without_secrets(self) -> None:
+        url = build_bug_report_url(
+            "text popup",
+            "GEMINI_API_KEY=AQ.this-is-a-secret-value Error 429",
+        )
+
+        self.assertIn("github.com/uryastra-beep/NovaLens/issues/new?", url)
+        self.assertIn("%23+What+happened", url)
+        self.assertNotIn("this-is-a-secret-value", url)
+
+    def test_known_gemini_key_shapes_are_redacted(self) -> None:
+        self.assertEqual(
+            redact_secrets("AIzaabcdefghijklmnopqrstuvwxyz123456"),
+            "[REDACTED]",
+        )
 
 
 class BubbleLayoutTests(unittest.TestCase):
