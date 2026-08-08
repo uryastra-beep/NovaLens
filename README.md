@@ -99,7 +99,7 @@ All six shortcuts can be changed from the Settings interface.
 
 ### Text popup
 
-Press `P + Enter`, write a question, and press Enter or click **Enviar**. Nova Lens sends the request to Gemini and displays the answer inside the same popup.
+Press `P + Enter`, write a question, and press Enter or click **Send**. Nova Lens sends the request to Gemini and displays the answer inside the same popup.
 
 The popup remains alive in the background while hidden. Nova Lens synchronizes its native Windows surface before the first visible frame to keep compact and normal modes aligned on scaled displays.
 
