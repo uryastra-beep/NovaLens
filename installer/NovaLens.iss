@@ -48,10 +48,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\NovaLens\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\assets\NovaLens.ico"; DestDir: "{app}"; DestName: "NovaLens.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Nova Lens"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\Nova Lens"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\Nova Lens"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\NovaLens.ico"; IconIndex: 0
+Name: "{autodesktop}\Nova Lens"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\NovaLens.ico"; IconIndex: 0; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

@@ -329,11 +329,17 @@ async def main(page: ft.Page) -> None:
     posiciones_guardadas = copy.deepcopy(config["bubble_positions"])
 
     estado = ft.Text(t["local"], size=12, color=TEXTO_SECUNDARIO)
-    logo_novalens = ft.Image(
-        src=RUTA_LOGO,
+    logo_novalens = ft.Container(
         width=58,
         height=58,
-        fit=ft.BoxFit.CONTAIN,
+        border_radius=ft.BorderRadius.all(12),
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        content=ft.Image(
+            src=RUTA_LOGO,
+            width=58,
+            height=58,
+            fit=ft.BoxFit.COVER,
+        ),
     )
     titulo_principal = ft.Text(
         t["welcome_title"] if onboarding_activo else t["title"],
