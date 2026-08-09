@@ -25,6 +25,7 @@ from config_manager import (
     guardar_configuracion,
     restaurar_configuracion,
 )
+from runtime_control import ACTION_RESTART_APP, escribir_accion_runtime
 
 FONDO = "#17110E"
 PANEL = "#241914"
@@ -121,6 +122,10 @@ TRADUCCIONES = {
         "system": "System",
         "system_sub": "Control how Nova Lens starts in Windows.",
         "startup": "Start Nova Lens automatically with Windows",
+        "reset_app": "Reset Nova Lens",
+        "reset_help": "Completely close and reopen Nova Lens if a floating bubble or background component stops responding.",
+        "restarting": "Nova Lens is restarting…",
+        "reset_error": "I could not request the restart. Close Settings and try again.",
         "save": "Save changes",
         "restore": "Restore defaults",
         "saved": "Settings and API key saved. Restart Nova Lens to apply the language everywhere.",
@@ -209,6 +214,10 @@ TRADUCCIONES = {
         "system": "Sistema",
         "system_sub": "Controlá cómo se inicia Nova Lens en Windows.",
         "startup": "Iniciar Nova Lens automáticamente con Windows",
+        "reset_app": "Reiniciar Nova Lens",
+        "reset_help": "Cerrá y volvé a abrir Nova Lens por completo si una burbuja o componente en segundo plano deja de responder.",
+        "restarting": "Nova Lens se está reiniciando…",
+        "reset_error": "No pude solicitar el reinicio. Cerrá Configuración e intentá nuevamente.",
         "save": "Guardar cambios",
         "restore": "Restaurar valores",
         "saved": "Configuración y API key guardadas. Reiniciá Nova Lens para aplicar el idioma en toda la app.",
@@ -303,6 +312,7 @@ async def main(page: ft.Page) -> None:
     archivo_desbloqueo = Path(sys.argv[1]) if len(sys.argv) >= 2 else None
     archivo_posicion_audio = Path(sys.argv[2]) if len(sys.argv) >= 3 else None
     archivo_posicion_control = Path(sys.argv[3]) if len(sys.argv) >= 4 else None
+    archivo_acciones = Path(sys.argv[4]) if len(sys.argv) >= 5 else None
     escribir_estado_desbloqueo(archivo_desbloqueo, False)
 
     config = cargar_configuracion()
@@ -812,6 +822,16 @@ async def main(page: ft.Page) -> None:
             return
         mostrar_estado(t["restored"], True)
 
+    def reiniciar_app(e: Any = None) -> None:
+        if escribir_accion_runtime(
+            archivo_acciones,
+            ACTION_RESTART_APP,
+        ):
+            mostrar_estado(t["restarting"], True)
+            return
+
+        mostrar_estado(t["reset_error"], False)
+
     def fila_slider(etiqueta: str, control: ft.Slider, sufijo: str) -> ft.Row:
         valor = ft.Text(
             f"{round(control.value or 0)} {sufijo}",
@@ -925,7 +945,24 @@ async def main(page: ft.Page) -> None:
                     ft.Row(controls=[atajo_cerrar, atajo_cerrar_alt], wrap=True, spacing=12),
                 ],
             ),
-            tarjeta(t["system"], t["system_sub"], [inicio_windows]),
+            tarjeta(
+                t["system"],
+                t["system_sub"],
+                [
+                    inicio_windows,
+                    ft.Divider(color=BORDE),
+                    ft.Text(
+                        t["reset_help"],
+                        size=12,
+                        color=TEXTO_SECUNDARIO,
+                    ),
+                    ft.OutlinedButton(
+                        content=t["reset_app"],
+                        icon=ft.Icons.RESTART_ALT_ROUNDED,
+                        on_click=reiniciar_app,
+                    ),
+                ],
+            ),
             ft.Row(
                 controls=[
                     ft.Button(content=t["save"], icon=ft.Icons.SAVE, bgcolor=ACENTO, color=TEXTO, on_click=guardar),

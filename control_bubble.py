@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
-import json
 import os
 import sys
 import time
@@ -42,6 +41,12 @@ from bubble_layout import (
 )
 from config_manager import cargar_configuracion, color_con_transparencia
 from localization import tr
+from runtime_control import (
+    ACTION_CLOSE_POPUP,
+    ACTION_OPEN_POPUP,
+    ACTION_RESTART_APP,
+    escribir_accion_runtime,
+)
 
 
 class RECT(ctypes.Structure):
@@ -77,42 +82,30 @@ def obtener_area_trabajo() -> tuple[int, int, int, int]:
     return 0, 0, 1280, 720
 
 
-def escribir_accion(ruta: Path, accion: str) -> None:
-    temporal = ruta.with_name(f"{ruta.name}.{os.getpid()}.tmp")
-    datos = {
-        "id": time.time_ns(),
-        "action": accion,
-    }
-
+def registrar_latido(ruta: Path) -> None:
     try:
-        temporal.write_text(
-            json.dumps(datos, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        os.replace(temporal, ruta)
+        ruta.touch()
     except OSError:
-        try:
-            temporal.unlink(missing_ok=True)
-        except OSError:
-            pass
+        pass
 
 
 async def main(page: ft.Page) -> None:
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 5:
         raise SystemExit(
             "Usage: control_bubble.py "
-            "<action-file> <unlock-file> <position-file>"
+            "<action-file> <unlock-file> <position-file> <health-file>"
         )
 
     archivo_acciones = Path(sys.argv[1])
     archivo_desbloqueo = Path(sys.argv[2])
     archivo_posicion = Path(sys.argv[3])
+    archivo_salud = Path(sys.argv[4])
     config = cargar_configuracion()
     apariencia = config["appearance"]
     posicion_guardada = config["bubble_positions"]["control"]
 
     izquierda, arriba, ancho, alto = obtener_area_trabajo()
-    ancho_burbuja = 264
+    ancho_burbuja = 374
     alto_burbuja = 58
     margen = max(8, int(apariencia["margin"]))
     posicion_predeterminada = (
@@ -153,10 +146,13 @@ async def main(page: ft.Page) -> None:
     )
 
     def abrir_popup(e=None) -> None:
-        escribir_accion(archivo_acciones, "open_popup")
+        escribir_accion_runtime(archivo_acciones, ACTION_OPEN_POPUP)
 
     def cerrar_popup(e=None) -> None:
-        escribir_accion(archivo_acciones, "close_popup")
+        escribir_accion_runtime(archivo_acciones, ACTION_CLOSE_POPUP)
+
+    def reiniciar_app(e=None) -> None:
+        escribir_accion_runtime(archivo_acciones, ACTION_RESTART_APP)
 
     async def guardar_posicion_arrastrada(e=None) -> None:
         await asyncio.sleep(0.08)
@@ -213,6 +209,15 @@ async def main(page: ft.Page) -> None:
                     color=apariencia["text_color"],
                     on_click=cerrar_popup,
                 ),
+                ft.Button(
+                    width=104,
+                    height=40,
+                    content=ft.Text(tr("bubble_reset")),
+                    icon=ft.Icons.RESTART_ALT_ROUNDED,
+                    bgcolor=fondo_boton,
+                    color=apariencia["text_color"],
+                    on_click=reiniciar_app,
+                ),
             ],
             spacing=5,
             alignment=ft.MainAxisAlignment.CENTER,
@@ -237,8 +242,15 @@ async def main(page: ft.Page) -> None:
     except Exception:
         pass
 
+    registrar_latido(archivo_salud)
+    ultimo_latido = time.monotonic()
     ultimo_estado: bool | None = None
     while True:
+        ahora = time.monotonic()
+        if ahora - ultimo_latido >= 1.0:
+            registrar_latido(archivo_salud)
+            ultimo_latido = ahora
+
         desbloqueado = leer_estado_desbloqueo(archivo_desbloqueo)
         if desbloqueado != ultimo_estado:
             ultimo_estado = desbloqueado

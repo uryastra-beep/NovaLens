@@ -25,6 +25,13 @@ from config_manager import (
 )
 from localization import tr
 from rolling_audio import RollingAudioBuffer
+from runtime_control import (
+    ACTION_CLOSE_POPUP,
+    ACTION_OPEN_POPUP,
+    ACTION_RESTART_APP,
+    RESTARTED_FLAG,
+    RESTART_HELPER_FLAG,
+)
 
 
 # ══════════════════════════════════════════════
@@ -37,6 +44,8 @@ ARCHIVO_CONFIG_APP = CARPETA_PROYECTO / "config.py"
 ARCHIVO_MULTIMODAL = CARPETA_PROYECTO / "multimodal.py"
 ARCHIVO_INDICADOR_AUDIO = CARPETA_PROYECTO / "audio_indicator.py"
 ARCHIVO_BURBUJA_CONTROL = CARPETA_PROYECTO / "control_bubble.py"
+ARCHIVO_AVISO_REINICIO = CARPETA_PROYECTO / "restart_prompt.py"
+ARCHIVO_LANZADOR = CARPETA_PROYECTO / "launcher.py"
 
 ARCHIVO_CONTROL = (
     Path(tempfile.gettempdir())
@@ -59,8 +68,14 @@ ARCHIVO_POSICION_CONTROL_BORRADOR = (
     Path(tempfile.gettempdir())
     / f"novalens_control_position_{os.getpid()}.json"
 )
+ARCHIVO_SALUD_BURBUJA = (
+    Path(tempfile.gettempdir())
+    / f"novalens_control_bubble_health_{os.getpid()}.tmp"
+)
 
 FRECUENCIA_AUDIO = 16_000
+GRACIA_INICIO_BURBUJA_SEGUNDOS = 8.0
+MAX_EDAD_LATIDO_BURBUJA_SEGUNDOS = 4.0
 
 
 # ══════════════════════════════════════════════
@@ -71,12 +86,14 @@ proceso_popup: subprocess.Popen | None = None
 proceso_configuracion: subprocess.Popen | None = None
 proceso_indicador_audio: subprocess.Popen | None = None
 proceso_burbuja_control: subprocess.Popen | None = None
+proceso_aviso_reinicio: subprocess.Popen | None = None
 procesos_multimodales: dict[str, subprocess.Popen] = {}
 
 bloqueo_estado = threading.Lock()
 bloqueo_control = threading.Lock()
 bloqueo_atajos = threading.Lock()
 bloqueo_audio = threading.Lock()
+bloqueo_ciclo_burbuja = threading.RLock()
 
 novalens_cerrando = threading.Event()
 
@@ -96,6 +113,7 @@ audio_habilitado = True
 duracion_buffer_audio = 10
 mostrar_indicador_audio = True
 mostrar_burbuja_control = True
+inicio_burbuja_control = 0.0
 
 
 # ══════════════════════════════════════════════
@@ -237,6 +255,7 @@ def eliminar_archivos_control() -> None:
         ARCHIVO_ESTADO_BURBUJAS,
         ARCHIVO_POSICION_AUDIO_BORRADOR,
         ARCHIVO_POSICION_CONTROL_BORRADOR,
+        ARCHIVO_SALUD_BURBUJA,
     ):
         eliminar_archivo_sesion(ruta)
 
@@ -355,10 +374,12 @@ def ejecutar_accion_burbuja(accion: str) -> None:
     if novalens_cerrando.is_set():
         return
 
-    if accion == "open_popup":
+    if accion == ACTION_OPEN_POPUP:
         activar_popup()
-    elif accion == "close_popup":
+    elif accion == ACTION_CLOSE_POPUP:
         ocultar_popup_para_captura()
+    elif accion == ACTION_RESTART_APP:
+        reiniciar_novalens()
 
 
 def vigilar_acciones_burbuja() -> None:
@@ -384,47 +405,80 @@ def vigilar_acciones_burbuja() -> None:
 
 def vigilar_burbuja_control(proceso: subprocess.Popen) -> None:
     global proceso_burbuja_control
+    global inicio_burbuja_control
 
     proceso.wait()
 
     with bloqueo_estado:
         if proceso_burbuja_control is proceso:
             proceso_burbuja_control = None
+            inicio_burbuja_control = 0.0
+
+
+def burbuja_control_saludable() -> bool:
+    with bloqueo_estado:
+        proceso = proceso_burbuja_control
+        inicio = inicio_burbuja_control
+
+    if proceso is None or proceso.poll() is not None:
+        return False
+
+    if time.monotonic() - inicio <= GRACIA_INICIO_BURBUJA_SEGUNDOS:
+        return True
+
+    try:
+        edad = max(
+            0.0,
+            time.time() - ARCHIVO_SALUD_BURBUJA.stat().st_mtime,
+        )
+    except OSError:
+        return False
+
+    return edad <= MAX_EDAD_LATIDO_BURBUJA_SEGUNDOS
 
 
 def iniciar_burbuja_control() -> bool:
     global proceso_burbuja_control
+    global inicio_burbuja_control
 
-    if (
-        novalens_cerrando.is_set()
-        or not mostrar_burbuja_control
-        or not archivo_hijo_disponible(ARCHIVO_BURBUJA_CONTROL)
-    ):
-        return False
-
-    with bloqueo_estado:
-        proceso_actual = proceso_burbuja_control
-        if proceso_actual is not None and proceso_actual.poll() is None:
-            return True
-
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-        try:
-            proceso = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(ARCHIVO_BURBUJA_CONTROL),
-                    str(ARCHIVO_ACCIONES_BURBUJA),
-                    str(ARCHIVO_ESTADO_BURBUJAS),
-                    str(ARCHIVO_POSICION_CONTROL_BORRADOR),
-                ],
-                cwd=str(CARPETA_PROYECTO),
-                creationflags=creation_flags,
-            )
-        except Exception:
+    with bloqueo_ciclo_burbuja:
+        if (
+            novalens_cerrando.is_set()
+            or not mostrar_burbuja_control
+            or not archivo_hijo_disponible(ARCHIVO_BURBUJA_CONTROL)
+        ):
             return False
 
-        proceso_burbuja_control = proceso
+        with bloqueo_estado:
+            proceso_actual = proceso_burbuja_control
+            if proceso_actual is not None and proceso_actual.poll() is None:
+                return True
+
+            try:
+                ARCHIVO_SALUD_BURBUJA.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+            try:
+                proceso = subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(ARCHIVO_BURBUJA_CONTROL),
+                        str(ARCHIVO_ACCIONES_BURBUJA),
+                        str(ARCHIVO_ESTADO_BURBUJAS),
+                        str(ARCHIVO_POSICION_CONTROL_BORRADOR),
+                        str(ARCHIVO_SALUD_BURBUJA),
+                    ],
+                    cwd=str(CARPETA_PROYECTO),
+                    creationflags=creation_flags,
+                )
+            except Exception:
+                return False
+
+            proceso_burbuja_control = proceso
+            inicio_burbuja_control = time.monotonic()
 
     threading.Thread(
         target=vigilar_burbuja_control,
@@ -436,12 +490,20 @@ def iniciar_burbuja_control() -> bool:
 
 def detener_burbuja_control() -> None:
     global proceso_burbuja_control
+    global inicio_burbuja_control
 
-    with bloqueo_estado:
-        proceso = proceso_burbuja_control
-        proceso_burbuja_control = None
+    with bloqueo_ciclo_burbuja:
+        with bloqueo_estado:
+            proceso = proceso_burbuja_control
+            proceso_burbuja_control = None
+            inicio_burbuja_control = 0.0
 
-    terminar_arbol_proceso(proceso, timeout=1.5)
+        terminar_arbol_proceso(proceso, timeout=1.5)
+
+        try:
+            ARCHIVO_SALUD_BURBUJA.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def aplicar_configuracion_burbuja(
@@ -454,13 +516,35 @@ def aplicar_configuracion_burbuja(
         configuracion["behavior"]["show_control_bubble"]
     )
 
-    # Recreate it after every saved setting so language, colors, margin, and
-    # transparency are refreshed together with the rest of the interface.
-    detener_burbuja_control()
-    mostrar_burbuja_control = nueva_visibilidad
+    with bloqueo_ciclo_burbuja:
+        mostrar_burbuja_control = nueva_visibilidad
 
-    if mostrar_burbuja_control:
-        iniciar_burbuja_control()
+        # Recreate it after every saved setting so language, colors, margin,
+        # and transparency are refreshed together with the interface.
+        detener_burbuja_control()
+
+        if mostrar_burbuja_control:
+            iniciar_burbuja_control()
+
+
+def asegurar_burbuja_control_activa() -> bool:
+    if novalens_cerrando.is_set() or not mostrar_burbuja_control:
+        return False
+
+    if burbuja_control_saludable():
+        return True
+
+    with bloqueo_ciclo_burbuja:
+        if burbuja_control_saludable():
+            return True
+
+        detener_burbuja_control()
+        return iniciar_burbuja_control()
+
+
+def vigilar_salud_burbuja_control() -> None:
+    while not novalens_cerrando.wait(1.0):
+        asegurar_burbuja_control_activa()
 
 
 # ══════════════════════════════════════════════
@@ -852,6 +936,112 @@ def detener_procesos_multimodales() -> None:
 
 
 # ══════════════════════════════════════════════
+# RECOVERY AND FULL RESTART
+# ══════════════════════════════════════════════
+
+def comando_lanzador(*argumentos: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *argumentos]
+
+    return [
+        sys.executable,
+        str(ARCHIVO_LANZADOR),
+        *argumentos,
+    ]
+
+
+def vigilar_aviso_reinicio(proceso: subprocess.Popen) -> None:
+    global proceso_aviso_reinicio
+
+    proceso.wait()
+
+    with bloqueo_estado:
+        if proceso_aviso_reinicio is proceso:
+            proceso_aviso_reinicio = None
+
+
+def iniciar_aviso_reinicio() -> bool:
+    global proceso_aviso_reinicio
+
+    if (
+        novalens_cerrando.is_set()
+        or not archivo_hijo_disponible(ARCHIVO_AVISO_REINICIO)
+    ):
+        return False
+
+    with bloqueo_estado:
+        proceso_actual = proceso_aviso_reinicio
+        if proceso_actual is not None and proceso_actual.poll() is None:
+            return True
+
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            proceso = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ARCHIVO_AVISO_REINICIO),
+                ],
+                cwd=str(CARPETA_PROYECTO),
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return False
+
+        proceso_aviso_reinicio = proceso
+
+    threading.Thread(
+        target=vigilar_aviso_reinicio,
+        args=(proceso,),
+        daemon=True,
+    ).start()
+    return True
+
+
+def detener_aviso_reinicio() -> None:
+    global proceso_aviso_reinicio
+
+    with bloqueo_estado:
+        proceso = proceso_aviso_reinicio
+        proceso_aviso_reinicio = None
+
+    terminar_arbol_proceso(proceso)
+
+
+def reiniciar_novalens() -> bool:
+    if novalens_cerrando.is_set():
+        return False
+
+    creation_flags = 0
+    start_new_session = False
+    if os.name == "nt":
+        creation_flags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        )
+    else:
+        start_new_session = True
+
+    try:
+        subprocess.Popen(
+            comando_lanzador(
+                RESTART_HELPER_FLAG,
+                str(os.getpid()),
+            ),
+            cwd=str(CARPETA_PROYECTO),
+            creationflags=creation_flags,
+            start_new_session=start_new_session,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+    except Exception:
+        return False
+
+    cerrar_novalens()
+    return True
+
+
+# ══════════════════════════════════════════════
 # SETTINGS WINDOW
 # ══════════════════════════════════════════════
 
@@ -903,6 +1093,7 @@ def abrir_configuracion() -> None:
                     str(ARCHIVO_ESTADO_BURBUJAS),
                     str(ARCHIVO_POSICION_AUDIO_BORRADOR),
                     str(ARCHIVO_POSICION_CONTROL_BORRADOR),
+                    str(ARCHIVO_ACCIONES_BURBUJA),
                 ],
                 cwd=str(CARPETA_PROYECTO),
                 creationflags=creation_flags,
@@ -1066,6 +1257,7 @@ def cerrar_novalens() -> None:
     detener_burbuja_control()
     detener_procesos_multimodales()
     detener_indicador_audio()
+    detener_aviso_reinicio()
     detener_buffer_audio()
 
     with bloqueo_estado:
@@ -1107,8 +1299,16 @@ def main() -> None:
         daemon=True,
     ).start()
 
+    threading.Thread(
+        target=vigilar_salud_burbuja_control,
+        daemon=True,
+    ).start()
+
     if debe_abrir_configuracion_inicial(config, cargar_api_key()):
         threading.Timer(0.35, abrir_configuracion).start()
+
+    if RESTARTED_FLAG in sys.argv:
+        threading.Timer(0.75, iniciar_aviso_reinicio).start()
 
     try:
         keyboard.wait()

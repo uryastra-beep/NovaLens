@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,7 @@ from unittest.mock import patch
 
 import bubble_layout
 import config_manager
+import launcher
 import main as novalens_main
 import native_clickthrough
 import popup_layout
@@ -30,6 +33,11 @@ from popup_layout import (
 )
 from reporting import build_bug_report_url
 from rolling_audio import RollingAudioBuffer
+from runtime_control import (
+    ACTION_RESTART_APP,
+    RESTART_HELPER_FLAG,
+    escribir_accion_runtime,
+)
 from screen_selector import normalizar_region
 
 
@@ -462,6 +470,64 @@ class ControlBubbleTests(unittest.TestCase):
         ocultar.assert_called_once_with()
         cerrar_app.assert_not_called()
 
+    def test_restart_action_uses_the_full_recovery_flow(self) -> None:
+        with patch.object(novalens_main, "reiniciar_novalens") as reiniciar:
+            novalens_main.ejecutar_accion_burbuja(ACTION_RESTART_APP)
+
+        reiniciar.assert_called_once_with()
+
+    def test_supervisor_restarts_a_missing_control_bubble(self) -> None:
+        with (
+            patch.object(novalens_main, "mostrar_burbuja_control", True),
+            patch.object(
+                novalens_main,
+                "burbuja_control_saludable",
+                side_effect=[False, False],
+            ),
+            patch.object(novalens_main, "detener_burbuja_control") as detener,
+            patch.object(
+                novalens_main,
+                "iniciar_burbuja_control",
+                return_value=True,
+            ) as iniciar,
+        ):
+            resultado = novalens_main.asegurar_burbuja_control_activa()
+
+        self.assertTrue(resultado)
+        detener.assert_called_once_with()
+        iniciar.assert_called_once_with()
+
+    def test_health_check_rejects_a_stale_bubble_heartbeat(self) -> None:
+        proceso = mock.Mock()
+        proceso.poll.return_value = None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            heartbeat = Path(tmp) / "bubble-health.tmp"
+            heartbeat.touch()
+            stale = time.time() - 30
+            os.utime(heartbeat, (stale, stale))
+
+            with (
+                patch.object(
+                    novalens_main,
+                    "proceso_burbuja_control",
+                    proceso,
+                ),
+                patch.object(
+                    novalens_main,
+                    "inicio_burbuja_control",
+                    time.monotonic() - 30,
+                ),
+                patch.object(
+                    novalens_main,
+                    "ARCHIVO_SALUD_BURBUJA",
+                    heartbeat,
+                ),
+            ):
+                self.assertFalse(
+                    novalens_main.burbuja_control_saludable()
+                )
+
     def test_packaged_children_do_not_require_loose_source_files(self) -> None:
         missing = Path(tempfile.gettempdir()) / "missing_control_bubble.py"
 
@@ -472,6 +538,53 @@ class ControlBubbleTests(unittest.TestCase):
             create=True,
         ):
             self.assertTrue(novalens_main.archivo_hijo_disponible(missing))
+
+
+class RuntimeRecoveryTests(unittest.TestCase):
+    def test_runtime_action_is_written_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "runtime-action.json"
+
+            self.assertTrue(
+                escribir_accion_runtime(path, ACTION_RESTART_APP)
+            )
+            payload = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["action"], ACTION_RESTART_APP)
+        self.assertIsInstance(payload["id"], int)
+
+    def test_restart_helper_waits_before_launching_replacement(self) -> None:
+        with (
+            patch.object(
+                launcher.sys,
+                "argv",
+                ["launcher.py", RESTART_HELPER_FLAG, "4321"],
+            ),
+            patch.object(
+                launcher,
+                "wait_for_process_exit",
+                return_value=True,
+            ) as esperar,
+            patch.object(launcher, "launch_restarted_process") as lanzar,
+        ):
+            self.assertTrue(launcher.run_restart_helper())
+
+        esperar.assert_called_once_with(4321)
+        lanzar.assert_called_once_with()
+
+    def test_full_restart_spawns_helper_before_shutdown(self) -> None:
+        novalens_main.novalens_cerrando.clear()
+
+        with (
+            patch.object(novalens_main.subprocess, "Popen") as lanzar,
+            patch.object(novalens_main, "cerrar_novalens") as cerrar,
+        ):
+            self.assertTrue(novalens_main.reiniciar_novalens())
+
+        comando = lanzar.call_args.args[0]
+        self.assertIn(RESTART_HELPER_FLAG, comando)
+        self.assertIn(str(os.getpid()), comando)
+        cerrar.assert_called_once_with()
 
 
 class DynamicHotkeyTests(unittest.TestCase):

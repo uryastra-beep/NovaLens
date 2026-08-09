@@ -40,6 +40,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "request_failed": "I could not complete the request.",
         "bubble_open": "Open",
         "bubble_close": "Close",
+        "bubble_reset": "Reset",
+        "restart_report_title": "Nova Lens recovery",
+        "restart_complete": "Nova Lens restarted successfully",
+        "restart_report_question": "Do you want to report an error?",
+        "no": "No",
     },
     "spanish": {
         "popup_ready": "Nova Lens está listo. Escribí una pregunta en el campo inferior.",
@@ -77,6 +82,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "request_failed": "No pude completar la solicitud.",
         "bubble_open": "Abrir",
         "bubble_close": "Cerrar",
+        "bubble_reset": "Reiniciar",
+        "restart_report_title": "Recuperación de Nova Lens",
+        "restart_complete": "Nova Lens se reinició correctamente",
+        "restart_report_question": "¿Querés informar un error?",
+        "no": "No",
     },
 }
 
