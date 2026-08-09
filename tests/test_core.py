@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import bubble_layout
 import config_manager
+import control_bubble
 import launcher
 import main as novalens_main
 import native_clickthrough
@@ -527,6 +528,72 @@ class ControlBubbleTests(unittest.TestCase):
                 self.assertFalse(
                     novalens_main.burbuja_control_saludable()
                 )
+
+    def test_health_check_rejects_an_invisible_bubble_window(self) -> None:
+        proceso = mock.Mock()
+        proceso.poll.return_value = None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            heartbeat = Path(tmp) / "bubble-health.tmp"
+            heartbeat.touch()
+
+            with (
+                patch.object(
+                    novalens_main,
+                    "proceso_burbuja_control",
+                    proceso,
+                ),
+                patch.object(
+                    novalens_main,
+                    "inicio_burbuja_control",
+                    time.monotonic() - 30,
+                ),
+                patch.object(
+                    novalens_main,
+                    "ARCHIVO_SALUD_BURBUJA",
+                    heartbeat,
+                ),
+                patch.object(
+                    novalens_main,
+                    "ventana_burbuja_control_visible",
+                    return_value=False,
+                ) as visible,
+            ):
+                self.assertFalse(
+                    novalens_main.burbuja_control_saludable()
+                )
+
+        visible.assert_called_once_with(proceso)
+
+    def test_native_show_targets_only_the_current_bubble_process(self) -> None:
+        user32 = mock.Mock()
+        user32.FindWindowW.return_value = 1234
+        user32.SetWindowPos.return_value = True
+        user32.IsWindowVisible.return_value = True
+
+        def escribir_pid(_hwnd, destino) -> None:
+            destino._obj.value = os.getpid()
+
+        user32.GetWindowThreadProcessId.side_effect = escribir_pid
+
+        with (
+            patch.object(control_bubble.os, "name", "nt"),
+            patch.object(
+                control_bubble.ctypes,
+                "windll",
+                SimpleNamespace(user32=user32),
+                create=True,
+            ),
+        ):
+            self.assertTrue(
+                control_bubble.forzar_ventana_visible_nativa(
+                    control_bubble.TITULO_VENTANA
+                )
+            )
+
+        user32.ShowWindow.assert_called_once()
+        user32.SetWindowPos.assert_called_once()
+        user32.IsWindowVisible.assert_called_once_with(1234)
 
     def test_packaged_children_do_not_require_loose_source_files(self) -> None:
         missing = Path(tempfile.gettempdir()) / "missing_control_bubble.py"

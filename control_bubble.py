@@ -41,12 +41,22 @@ from bubble_layout import (
 )
 from config_manager import cargar_configuracion, color_con_transparencia
 from localization import tr
+from popup_layout import wait_and_snap_native_window_geometry
 from runtime_control import (
     ACTION_CLOSE_POPUP,
     ACTION_OPEN_POPUP,
     ACTION_RESTART_APP,
     escribir_accion_runtime,
 )
+
+
+TITULO_VENTANA = "Nova Lens Controls"
+SW_SHOWNOACTIVATE = 4
+HWND_TOPMOST = -1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOACTIVATE = 0x0010
+SWP_SHOWWINDOW = 0x0040
 
 
 class RECT(ctypes.Structure):
@@ -89,6 +99,67 @@ def registrar_latido(ruta: Path) -> None:
         pass
 
 
+def forzar_ventana_visible_nativa(titulo: str) -> bool:
+    """Show the bubble's HWND without stealing focus on Windows.
+
+    Flet can keep a frameless hidden app alive and responsive even when its
+    native window never becomes visible. A heartbeat alone cannot detect that
+    state, so explicitly restore and show the HWND after the first layout.
+    """
+    if os.name != "nt" or not str(titulo or "").strip():
+        return False
+
+    try:
+        user32 = ctypes.windll.user32
+        encontrar = user32.FindWindowW
+        encontrar.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        encontrar.restype = ctypes.c_void_p
+        hwnd = encontrar(None, str(titulo))
+        if not hwnd:
+            return False
+
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if int(pid.value) != os.getpid():
+            return False
+
+        user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+        mostrado = bool(
+            user32.SetWindowPos(
+                hwnd,
+                ctypes.c_void_p(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE
+                | SWP_NOSIZE
+                | SWP_NOACTIVATE
+                | SWP_SHOWWINDOW,
+            )
+        )
+        return mostrado and bool(user32.IsWindowVisible(hwnd))
+    except Exception:
+        return False
+
+
+async def asegurar_ventana_visible_nativa(
+    titulo: str,
+    intentos: int = 30,
+    intervalo: float = 0.05,
+) -> bool:
+    """Wait briefly for Flet's HWND and force it visible when available."""
+    if os.name != "nt":
+        return True
+
+    for _ in range(max(1, int(intentos))):
+        if forzar_ventana_visible_nativa(titulo):
+            return True
+        await asyncio.sleep(max(0.01, float(intervalo)))
+
+    return False
+
+
 async def main(page: ft.Page) -> None:
     if len(sys.argv) < 5:
         raise SystemExit(
@@ -119,7 +190,7 @@ async def main(page: ft.Page) -> None:
         (ancho_burbuja, alto_burbuja),
     )
 
-    page.title = "Nova Lens Controls"
+    page.title = TITULO_VENTANA
     page.padding = 0
     page.spacing = 0
     page.bgcolor = ft.Colors.TRANSPARENT
@@ -132,6 +203,10 @@ async def main(page: ft.Page) -> None:
     page.window.shadow = False
     page.window.width = ancho_burbuja
     page.window.height = alto_burbuja
+    page.window.min_width = ancho_burbuja
+    page.window.max_width = ancho_burbuja
+    page.window.min_height = alto_burbuja
+    page.window.max_height = alto_burbuja
     page.window.left = posicion_inicial[0]
     page.window.top = posicion_inicial[1]
     page.window.visible = False
@@ -225,31 +300,54 @@ async def main(page: ft.Page) -> None:
         ),
     )
 
-    page.add(
-        contenedor
-    )
+    page.add(contenedor)
+    page.update()
+
+    # Start the heartbeat before waiting for the desktop client. Otherwise a
+    # slow first Flet frame can make the supervisor restart a healthy child.
+    registrar_latido(archivo_salud)
 
     try:
-        await page.window.wait_until_ready_to_show()
+        await asyncio.wait_for(
+            page.window.wait_until_ready_to_show(),
+            timeout=4.0,
+        )
     except Exception:
         pass
 
+    # Avoid Flet's animated resize from its initial 1280x720 surface to this
+    # short frameless window. This is the same native geometry strategy used
+    # by the stable text popup.
+    await wait_and_snap_native_window_geometry(
+        page.title,
+        posicion_inicial[0],
+        posicion_inicial[1],
+        ancho_burbuja,
+        alto_burbuja,
+    )
+
     page.window.visible = True
     page.update()
+
+    await asegurar_ventana_visible_nativa(page.title)
 
     try:
         await page.window.to_front()
     except Exception:
         pass
 
-    registrar_latido(archivo_salud)
     ultimo_latido = time.monotonic()
+    ultimo_forzado_visibilidad = 0.0
     ultimo_estado: bool | None = None
     while True:
         ahora = time.monotonic()
         if ahora - ultimo_latido >= 1.0:
             registrar_latido(archivo_salud)
             ultimo_latido = ahora
+
+        if ahora - ultimo_forzado_visibilidad >= 2.0:
+            forzar_ventana_visible_nativa(page.title)
+            ultimo_forzado_visibilidad = ahora
 
         desbloqueado = leer_estado_desbloqueo(archivo_desbloqueo)
         if desbloqueado != ultimo_estado:
