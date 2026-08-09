@@ -35,6 +35,7 @@ from popup_layout import (
 from reporting import build_bug_report_url
 from rolling_audio import RollingAudioBuffer
 from runtime_control import (
+    ACTION_OPEN_POPUP,
     ACTION_RESTART_APP,
     RESTART_HELPER_FLAG,
     escribir_accion_runtime,
@@ -529,7 +530,7 @@ class ControlBubbleTests(unittest.TestCase):
                     novalens_main.burbuja_control_saludable()
                 )
 
-    def test_health_check_rejects_an_invisible_bubble_window(self) -> None:
+    def test_health_check_trusts_a_fresh_child_heartbeat(self) -> None:
         proceso = mock.Mock()
         proceso.poll.return_value = None
 
@@ -553,28 +554,16 @@ class ControlBubbleTests(unittest.TestCase):
                     "ARCHIVO_SALUD_BURBUJA",
                     heartbeat,
                 ),
-                patch.object(
-                    novalens_main,
-                    "ventana_burbuja_control_visible",
-                    return_value=False,
-                ) as visible,
             ):
-                self.assertFalse(
+                self.assertTrue(
                     novalens_main.burbuja_control_saludable()
                 )
 
-        visible.assert_called_once_with(proceso)
-
-    def test_native_show_targets_only_the_current_bubble_process(self) -> None:
+    def test_native_show_accepts_flet_desktop_child_window(self) -> None:
         user32 = mock.Mock()
         user32.FindWindowW.return_value = 1234
         user32.SetWindowPos.return_value = True
         user32.IsWindowVisible.return_value = True
-
-        def escribir_pid(_hwnd, destino) -> None:
-            destino._obj.value = os.getpid()
-
-        user32.GetWindowThreadProcessId.side_effect = escribir_pid
 
         with (
             patch.object(control_bubble.os, "name", "nt"),
@@ -594,6 +583,69 @@ class ControlBubbleTests(unittest.TestCase):
         user32.ShowWindow.assert_called_once()
         user32.SetWindowPos.assert_called_once()
         user32.IsWindowVisible.assert_called_once_with(1234)
+
+    def test_visible_native_bubble_does_not_need_forced_show(self) -> None:
+        user32 = mock.Mock()
+        user32.FindWindowW.return_value = 4321
+        user32.IsWindowVisible.return_value = True
+
+        with (
+            patch.object(control_bubble.os, "name", "nt"),
+            patch.object(
+                control_bubble.ctypes,
+                "windll",
+                SimpleNamespace(user32=user32),
+                create=True,
+            ),
+        ):
+            self.assertTrue(
+                control_bubble.ventana_nativa_visible(
+                    control_bubble.TITULO_VENTANA
+                )
+            )
+
+        user32.IsWindowVisible.assert_called_once_with(4321)
+        user32.ShowWindow.assert_not_called()
+
+    def test_bubble_action_dispatcher_throttles_duplicate_clicks(self) -> None:
+        action_file = Path(tempfile.gettempdir()) / "bubble-actions.json"
+
+        with (
+            patch.object(
+                control_bubble,
+                "escribir_accion_runtime",
+                return_value=True,
+            ) as escribir,
+            patch.object(
+                control_bubble.time,
+                "monotonic",
+                side_effect=[10.0, 10.1, 10.6],
+            ),
+        ):
+            enviar = control_bubble.crear_despachador_acciones(
+                action_file,
+                intervalo_minimo=0.45,
+            )
+            self.assertTrue(enviar(ACTION_OPEN_POPUP))
+            self.assertFalse(enviar(ACTION_OPEN_POPUP))
+            self.assertTrue(enviar(ACTION_OPEN_POPUP))
+
+        self.assertEqual(escribir.call_count, 2)
+
+    def test_bubble_action_dispatcher_latches_reset(self) -> None:
+        action_file = Path(tempfile.gettempdir()) / "bubble-actions.json"
+
+        with patch.object(
+            control_bubble,
+            "escribir_accion_runtime",
+            return_value=True,
+        ) as escribir:
+            enviar = control_bubble.crear_despachador_acciones(action_file)
+            self.assertTrue(enviar(ACTION_RESTART_APP))
+            self.assertFalse(enviar(ACTION_RESTART_APP))
+            self.assertFalse(enviar(ACTION_OPEN_POPUP))
+
+        escribir.assert_called_once_with(action_file, ACTION_RESTART_APP)
 
     def test_packaged_children_do_not_require_loose_source_files(self) -> None:
         missing = Path(tempfile.gettempdir()) / "missing_control_bubble.py"

@@ -76,7 +76,6 @@ ARCHIVO_SALUD_BURBUJA = (
 FRECUENCIA_AUDIO = 16_000
 GRACIA_INICIO_BURBUJA_SEGUNDOS = 8.0
 MAX_EDAD_LATIDO_BURBUJA_SEGUNDOS = 4.0
-TITULO_VENTANA_BURBUJA = "Nova Lens Controls"
 
 
 # ══════════════════════════════════════════════
@@ -435,39 +434,11 @@ def burbuja_control_saludable() -> bool:
     except OSError:
         return False
 
-    if edad > MAX_EDAD_LATIDO_BURBUJA_SEGUNDOS:
-        return False
-
-    return ventana_burbuja_control_visible(proceso)
-
-
-def ventana_burbuja_control_visible(
-    proceso: subprocess.Popen | None,
-) -> bool:
-    """Return whether the supervised child owns a visible control HWND."""
-    if proceso is None or proceso.poll() is not None:
-        return False
-
-    if os.name != "nt":
-        return True
-
-    try:
-        user32 = ctypes.windll.user32
-        encontrar = user32.FindWindowW
-        encontrar.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
-        encontrar.restype = ctypes.c_void_p
-        hwnd = encontrar(None, TITULO_VENTANA_BURBUJA)
-        if not hwnd:
-            return False
-
-        pid = ctypes.c_ulong()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        return (
-            int(pid.value) == int(proceso.pid)
-            and bool(user32.IsWindowVisible(hwnd))
-        )
-    except Exception:
-        return False
+    # The Flet HWND may be owned by a desktop child process. Its own event loop
+    # publishes this heartbeat, so freshness plus a live supervised process is
+    # the reliable health signal. Native visibility is repaired inside the
+    # bubble process without destroying and recreating the entire process tree.
+    return edad <= MAX_EDAD_LATIDO_BURBUJA_SEGUNDOS
 
 
 def iniciar_burbuja_control() -> bool:

@@ -4,7 +4,9 @@ import asyncio
 import ctypes
 import os
 import sys
+import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -57,6 +59,7 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
+INTERVALO_MINIMO_ACCION_SEGUNDOS = 0.45
 
 
 class RECT(ctypes.Structure):
@@ -99,12 +102,67 @@ def registrar_latido(ruta: Path) -> None:
         pass
 
 
+def crear_despachador_acciones(
+    ruta: Path,
+    intervalo_minimo: float = INTERVALO_MINIMO_ACCION_SEGUNDOS,
+) -> Callable[[str], bool]:
+    """Return a click-safe action writer for the persistent bubble.
+
+    Flet can deliver a second pointer event while a frameless window is being
+    restored or moved to the foreground. Open and Close are idempotent, but a
+    repeated Reset can launch more than one restart helper. Throttle identical
+    actions and latch Reset after the first successful delivery.
+    """
+    bloqueo = threading.Lock()
+    ultimos_envios: dict[str, float] = {}
+    reinicio_enviado = False
+    intervalo = max(0.0, float(intervalo_minimo))
+
+    def enviar(accion: str) -> bool:
+        nonlocal reinicio_enviado
+
+        ahora = time.monotonic()
+        with bloqueo:
+            if reinicio_enviado:
+                return False
+
+            ultimo = ultimos_envios.get(accion)
+            if ultimo is not None and ahora - ultimo < intervalo:
+                return False
+
+            if not escribir_accion_runtime(ruta, accion):
+                return False
+
+            ultimos_envios[accion] = ahora
+            if accion == ACTION_RESTART_APP:
+                reinicio_enviado = True
+            return True
+
+    return enviar
+
+
+def ventana_nativa_visible(titulo: str) -> bool:
+    """Return whether Flet's exact top-level window title is visible."""
+    if os.name != "nt":
+        return True
+
+    try:
+        user32 = ctypes.windll.user32
+        encontrar = user32.FindWindowW
+        encontrar.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        encontrar.restype = ctypes.c_void_p
+        hwnd = encontrar(None, str(titulo or ""))
+        return bool(hwnd and user32.IsWindowVisible(hwnd))
+    except Exception:
+        return False
+
+
 def forzar_ventana_visible_nativa(titulo: str) -> bool:
     """Show the bubble's HWND without stealing focus on Windows.
 
-    Flet can keep a frameless hidden app alive and responsive even when its
-    native window never becomes visible. A heartbeat alone cannot detect that
-    state, so explicitly restore and show the HWND after the first layout.
+    The visible Flet HWND can belong to its desktop child instead of the Python
+    supervisor PID. The exact, unique title is therefore the stable identity;
+    rejecting the child PID makes a healthy packaged bubble restart forever.
     """
     if os.name != "nt" or not str(titulo or "").strip():
         return False
@@ -116,11 +174,6 @@ def forzar_ventana_visible_nativa(titulo: str) -> bool:
         encontrar.restype = ctypes.c_void_p
         hwnd = encontrar(None, str(titulo))
         if not hwnd:
-            return False
-
-        pid = ctypes.c_ulong()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if int(pid.value) != os.getpid():
             return False
 
         user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
@@ -219,15 +272,16 @@ async def main(page: ft.Page) -> None:
         apariencia["border_color"],
         28,
     )
+    enviar_accion = crear_despachador_acciones(archivo_acciones)
 
     def abrir_popup(e=None) -> None:
-        escribir_accion_runtime(archivo_acciones, ACTION_OPEN_POPUP)
+        enviar_accion(ACTION_OPEN_POPUP)
 
     def cerrar_popup(e=None) -> None:
-        escribir_accion_runtime(archivo_acciones, ACTION_CLOSE_POPUP)
+        enviar_accion(ACTION_CLOSE_POPUP)
 
     def reiniciar_app(e=None) -> None:
-        escribir_accion_runtime(archivo_acciones, ACTION_RESTART_APP)
+        enviar_accion(ACTION_RESTART_APP)
 
     async def guardar_posicion_arrastrada(e=None) -> None:
         await asyncio.sleep(0.08)
@@ -346,7 +400,8 @@ async def main(page: ft.Page) -> None:
             ultimo_latido = ahora
 
         if ahora - ultimo_forzado_visibilidad >= 2.0:
-            forzar_ventana_visible_nativa(page.title)
+            if not ventana_nativa_visible(page.title):
+                forzar_ventana_visible_nativa(page.title)
             ultimo_forzado_visibilidad = ahora
 
         desbloqueado = leer_estado_desbloqueo(archivo_desbloqueo)
