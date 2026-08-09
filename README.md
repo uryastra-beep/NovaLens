@@ -10,20 +10,20 @@ Use a floating popup for text questions, analyze a selected screen region, or as
 
 ## Current Release
 
-- **Version:** `v2.0.0`
+- **Version:** `v2.0.1`
 - **Platform:** Windows x64
-- **Download:** `NovaLens-Setup-v2.0.0-Windows-x64.exe`
+- **Download:** `NovaLens-Setup-v2.0.1-Windows-x64.exe`
 - **AI provider:** Google Gemini
 - **License:** GNU General Public License v3.0 only (`GPL-3.0-only`)
 
-## What's New in 2.0.0
+## What's New in 2.0.1
 
-Nova Lens 2.0.0 adds a guided first-launch setup, configurable screen and audio hotkeys, normal and compact popup modes, a safe in-app bug-report flow, a per-user Windows installer, and major popup-rendering stability improvements.
+Nova Lens 2.0.1 is a focused Windows bug-fix release. It restores the persistent control bubble when Windows hides it, adds a full **Reset** recovery action, and fixes both automatic and click-triggered restart loops. This release also refreshes the Nova Lens branding, polishes Settings, routes in-app error reporting to the official Discord community, and adopts the GNU GPLv3 license.
 
 ## Download and Install
 
 1. Open the latest release on GitHub.
-2. Download `NovaLens-Setup-v2.0.0-Windows-x64.exe`.
+2. Download `NovaLens-Setup-v2.0.1-Windows-x64.exe`.
 3. Run the installer and follow the setup wizard.
 4. Open Nova Lens and complete the first-launch guide.
 
@@ -60,7 +60,7 @@ Neither file is included in the release package or committed to this repository.
 - Audio transcription followed by an automatic answer.
 - Scrollable screenshot and audio responses.
 - Microphone activity indicator.
-- Persistent Open / Close control bubble.
+- Persistent Open / Close / Reset control bubble.
 - Movable audio and control bubbles with saved positions.
 - Entry and fade-out popup animations.
 - Automatic hiding after inactivity.
@@ -77,7 +77,7 @@ Neither file is included in the release package or committed to this repository.
 - Customizable text-popup and close hotkeys.
 - Customizable screen-region and recent-audio hotkeys.
 - Normal full-width and centered compact popup modes.
-- In-app bug-report button that opens a prefilled GitHub draft for review.
+- In-app error-reporting button that opens the official Discord community.
 - Per-user Windows installer.
 - English and Spanish interface localization.
 - Optional startup with Windows.
@@ -120,9 +120,9 @@ Nova Lens does not capture desktop or system audio. It uses the Windows default 
 
 ### Floating controls
 
-Nova Lens includes a persistent control bubble with **Open** and **Close** buttons. **Open** activates the text popup, while **Close** hides only the text popup and leaves Nova Lens running.
+Nova Lens includes a persistent control bubble with **Open**, **Close**, and **Reset** buttons. **Open** activates the text popup, **Close** hides only the text popup and leaves Nova Lens running, and **Reset** performs a controlled full restart when the interface needs recovery. After a Reset, Nova Lens asks whether you want to open the official Discord server to report the error.
 
-In Settings, enable **Unlock floating bubbles to move them**, drag the microphone indicator or the Open / Close bubble, and press **Save changes**. Their positions are stored locally and restored on the next launch.
+In Settings, enable **Unlock floating bubbles to move them**, drag the microphone indicator or the Open / Close / Reset bubble, and press **Save changes**. Their positions are stored locally and restored on the next launch.
 
 ## Privacy and Security
 
@@ -135,7 +135,7 @@ In Settings, enable **Unlock floating bubbles to move them**, drag the microphon
 - A selected screen region is sent to Gemini only after the selection is completed.
 - Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
 - Never include API keys in screenshots, logs, issues, or public repositories.
-- The in-app report button creates only a local browser draft; the user reviews and submits it manually.
+- The in-app report button only opens the official Discord destination; Nova Lens never submits a report automatically.
 
 Do not run Nova Lens around private conversations unless everyone present understands that the rolling microphone buffer is active.
 
@@ -144,7 +144,7 @@ Do not run Nova Lens around private conversations unless everyone present unders
 - Windows x64 is the only packaged platform.
 - The application and installer are not code-signed yet.
 - The selected default Windows microphone must work correctly.
-- Reporting an error requires a browser and a GitHub account to submit the draft.
+- Reporting an error through the community flow requires a browser and Discord access.
 - Video analysis is not implemented.
 - AI answers and transcriptions may be incorrect.
 - Gemini access depends on the user's Google project, API key status, quota, and service availability.
@@ -173,7 +173,9 @@ NovaLens/
 ├── popup_exe.py
 ├── popup_layout.py
 ├── reporting.py
+├── restart_prompt.py
 ├── rolling_audio.py
+├── runtime_control.py
 ├── screen_selector.py
 ├── tests/
 ├── requirements-build.txt
@@ -181,6 +183,7 @@ NovaLens/
 ├── LICENSE
 ├── README.md
 ├── RELEASE_NOTES_v2.0.0.md
+├── RELEASE_NOTES_v2.0.1.md
 └── .gitignore
 ```
 
@@ -193,8 +196,10 @@ NovaLens/
 - `multimodal.py`: scrollable screen-region and recent-audio response windows.
 - `screen_selector.py`: native screen-region selection and exact image capture.
 - `audio_indicator.py`: movable microphone activity bubble.
-- `control_bubble.py`: persistent Open / Close control bubble.
+- `control_bubble.py`: persistent Open / Close / Reset control bubble with heartbeat-based visibility recovery.
 - `bubble_layout.py`: local floating-bubble position and unlock-state management.
+- `runtime_control.py`: local commands and heartbeat state shared by the background process and control bubble.
+- `restart_prompt.py`: post-reset recovery prompt and optional Discord-report flow.
 - `native_clickthrough.py`: native Windows click-through protection.
 - `rolling_audio.py`: circular in-memory microphone buffer.
 - `backend.py`: Google Gemini text, image, and audio requests.
@@ -267,8 +272,8 @@ The script stops old Nova Lens processes, removes previous build folders, instal
 
 ```text
 dist\NovaLens\NovaLens.exe
-NovaLens-v2.0.0-Windows-x64.zip
-NovaLens-v2.0.0-Windows-x64.zip.sha256
+NovaLens-v2.0.1-Windows-x64.zip
+NovaLens-v2.0.1-Windows-x64.zip.sha256
 ```
 
 The ZIP must contain the complete `NovaLens` folder, including both `NovaLens.exe` and `_internal`.
@@ -284,8 +289,8 @@ Install Inno Setup 6, then run:
 This builds the portable application first and then creates:
 
 ```text
-installer-output\NovaLens-Setup-v2.0.0-Windows-x64.exe
-installer-output\NovaLens-Setup-v2.0.0-Windows-x64.exe.sha256
+installer-output\NovaLens-Setup-v2.0.1-Windows-x64.exe
+installer-output\NovaLens-Setup-v2.0.1-Windows-x64.exe.sha256
 ```
 
 To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -SkipPortableBuild`.
@@ -311,7 +316,7 @@ To reuse an already-built `dist\NovaLens` folder, run `.\build_installer.ps1 -Sk
 - [x] Microphone activity indicator.
 - [x] Enable or disable rolling audio from Settings.
 - [x] Configurable rolling-audio duration.
-- [x] Persistent Open / Close control bubble.
+- [x] Persistent Open / Close / Reset control bubble.
 - [x] Movable floating bubbles with saved positions.
 - [x] Scrollable screen and audio responses.
 - [x] Configurable screen and audio hotkeys.
