@@ -14,6 +14,7 @@ from unittest import mock
 from unittest.mock import patch
 
 import bubble_layout
+import config as settings_config
 import config_manager
 import control_bubble
 import launcher
@@ -44,6 +45,22 @@ from screen_selector import normalizar_region
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_settings_sections_have_stable_navigation_order(self) -> None:
+        self.assertEqual(
+            settings_config.SETTINGS_SECTION_KEYS,
+            (
+                "general",
+                "interface",
+                "visual",
+                "controls",
+                "multimedia",
+                "accessibility",
+            ),
+        )
+        for translations in settings_config.TRADUCCIONES.values():
+            for section in settings_config.SETTINGS_SECTION_KEYS:
+                self.assertTrue(translations[f"nav_{section}"])
+
     def test_corrupted_sections_fall_back_without_crashing(self) -> None:
         config = validar_configuracion(
             {

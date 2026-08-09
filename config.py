@@ -37,6 +37,15 @@ BORDE = "#513A2E"
 ERROR = "#FF8A80"
 EXITO = "#9BE59B"
 
+SETTINGS_SECTION_KEYS = (
+    "general",
+    "interface",
+    "visual",
+    "controls",
+    "multimedia",
+    "accessibility",
+)
+
 
 def ruta_recurso(ruta_relativa: str) -> str:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -70,6 +79,14 @@ TRADUCCIONES = {
         "english": "English",
         "spanish": "Spanish",
         "language_note": "The selected language is applied after saving and reopening Nova Lens.",
+        "sections": "Settings sections",
+        "sections_sub": "Choose what you want to configure.",
+        "nav_general": "General",
+        "nav_interface": "Interface",
+        "nav_visual": "Visual",
+        "nav_controls": "Controls",
+        "nav_multimedia": "Audio & screen",
+        "nav_accessibility": "Accessibility",
         "gemini": "Google Gemini",
         "gemini_sub": "Use your own API key to connect Nova Lens to Gemini.",
         "api_hint": "Paste your own Gemini API key here",
@@ -95,13 +112,17 @@ TRADUCCIONES = {
         "font_size": "Font size",
         "radius": "Rounded corners",
         "margin": "Screen margin",
+        "interface": "Interface",
+        "interface_sub": "Popup mode, placement, and floating controls.",
+        "accessibility": "Accessibility",
+        "accessibility_sub": "Text readability, response time, and pointer behavior.",
         "behavior": "Behavior",
         "behavior_sub": "Visible time and behavior when focus is lost.",
         "visible_time": "Visible time",
         "click_through": "Allow click-through when focus is lost",
-        "control_bubble": "Show the Open / Close control bubble",
+        "control_bubble": "Show the Open / Close / Reset control bubble",
         "unlock_bubbles": "Unlock floating bubbles to move them",
-        "unlock_bubbles_help": "Turn this on, drag the microphone bubble and the Open / Close bubble, then press Save changes to keep their new positions.",
+        "unlock_bubbles_help": "Turn this on, drag the microphone bubble and the Open / Close / Reset bubble, then press Save changes to keep their new positions.",
         "audio": "Recent audio",
         "audio_sub": "Control the rolling microphone buffer used by Nova Lens.",
         "audio_enabled": "Keep recent microphone audio available",
@@ -162,6 +183,14 @@ TRADUCCIONES = {
         "english": "Inglés",
         "spanish": "Español",
         "language_note": "El idioma seleccionado se aplica después de guardar y volver a abrir Nova Lens.",
+        "sections": "Secciones de configuración",
+        "sections_sub": "Elegí qué querés configurar.",
+        "nav_general": "General",
+        "nav_interface": "Interfaz",
+        "nav_visual": "Visual",
+        "nav_controls": "Controles",
+        "nav_multimedia": "Audio y pantalla",
+        "nav_accessibility": "Accesibilidad",
         "gemini": "Google Gemini",
         "gemini_sub": "Usá tu propia API key para conectar Nova Lens con Gemini.",
         "api_hint": "Pegá aquí tu propia API key de Gemini",
@@ -187,13 +216,17 @@ TRADUCCIONES = {
         "font_size": "Tamaño de fuente",
         "radius": "Bordes redondeados",
         "margin": "Margen de pantalla",
+        "interface": "Interfaz",
+        "interface_sub": "Modo, posición y controles flotantes del popup.",
+        "accessibility": "Accesibilidad",
+        "accessibility_sub": "Legibilidad del texto, tiempo de respuesta y comportamiento del puntero.",
         "behavior": "Comportamiento",
         "behavior_sub": "Tiempo visible y comportamiento al perder el foco.",
         "visible_time": "Tiempo visible",
         "click_through": "Permitir click-through cuando pierde el foco",
-        "control_bubble": "Mostrar la burbuja de Abrir / Cerrar",
+        "control_bubble": "Mostrar la burbuja de Abrir / Cerrar / Reiniciar",
         "unlock_bubbles": "Desbloquear las burbujas para moverlas",
-        "unlock_bubbles_help": "Activá esta opción, arrastrá la burbuja del micrófono y la de Abrir / Cerrar, y luego presioná Guardar cambios para conservar sus posiciones.",
+        "unlock_bubbles_help": "Activá esta opción, arrastrá la burbuja del micrófono y la de Abrir / Cerrar / Reiniciar, y luego presioná Guardar cambios para conservar sus posiciones.",
         "audio": "Audio reciente",
         "audio_sub": "Controlá el búfer continuo del micrófono que usa Nova Lens.",
         "audio_enabled": "Mantener disponible el audio reciente del micrófono",
@@ -324,9 +357,9 @@ async def main(page: ft.Page) -> None:
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = FONDO
     page.padding = 24
-    page.window.width = 860
+    page.window.width = 980
     page.window.height = 800
-    page.window.min_width = 720
+    page.window.min_width = 760
     page.window.min_height = 620
     page.window.resizable = True
 
@@ -849,130 +882,283 @@ async def main(page: ft.Page) -> None:
             controls=[ft.Text(etiqueta, color=TEXTO, width=150), control, valor]
         )
 
+    tarjeta_idioma = tarjeta(t["language"], t["language_note"], [idioma])
+    tarjeta_gemini = tarjeta(
+        t["gemini"],
+        t["gemini_sub"],
+        [
+            campo_api_key,
+            ft.Text(
+                t["api_ready"] if api_key_actual else t["api_missing"],
+                size=12,
+                color=EXITO if api_key_actual else TEXTO_SECUNDARIO,
+            ),
+            ft.Text(t["api_privacy"], size=12, color=TEXTO_SECUNDARIO),
+        ],
+    )
+    tarjeta_sistema = tarjeta(
+        t["system"],
+        t["system_sub"],
+        [
+            inicio_windows,
+            ft.Divider(color=BORDE),
+            ft.Text(
+                t["reset_help"],
+                size=12,
+                color=TEXTO_SECUNDARIO,
+            ),
+            ft.OutlinedButton(
+                content=t["reset_app"],
+                icon=ft.Icons.RESTART_ALT_ROUNDED,
+                on_click=reiniciar_app,
+            ),
+        ],
+    )
+    tarjeta_interfaz = tarjeta(
+        t["interface"],
+        t["interface_sub"],
+        [
+            ft.Row(
+                controls=[posicion, modo_visual],
+                wrap=True,
+                spacing=12,
+            ),
+            burbuja_control,
+            desbloquear_burbujas,
+            ft.Text(
+                t["unlock_bubbles_help"],
+                size=12,
+                color=TEXTO_SECUNDARIO,
+            ),
+        ],
+    )
+    tarjeta_visual = tarjeta(
+        t["appearance"],
+        t["appearance_sub"],
+        [
+            ft.Row(
+                controls=[color_principal, color_texto, color_secundario],
+                wrap=True,
+                spacing=12,
+            ),
+            color_borde,
+            fila_slider(t["transparency"], transparencia, "%"),
+            fila_slider(t["radius"], radio, "px"),
+            fila_slider(t["margin"], margen, "px"),
+        ],
+    )
+    tarjeta_accesibilidad = tarjeta(
+        t["accessibility"],
+        t["accessibility_sub"],
+        [
+            fila_slider(t["font_size"], fuente, "px"),
+            fila_slider(t["visible_time"], tiempo, "s"),
+            click_through,
+        ],
+    )
+    tarjeta_audio = tarjeta(
+        t["audio"],
+        t["audio_sub"],
+        [
+            audio_habilitado,
+            fila_slider(t["audio_duration"], duracion_audio, "s"),
+            indicador_audio,
+            ft.Text(
+                t["audio_privacy"].format(shortcut=atajos["audio"]),
+                size=12,
+                color=TEXTO_SECUNDARIO,
+            ),
+        ],
+    )
+    tarjeta_pantalla = tarjeta(
+        t["screen_capture"],
+        t["screen_capture_sub"],
+        [
+            ft.Text(
+                t["screen_region_help"].format(shortcut=atajos["screen"]),
+                size=12,
+                color=TEXTO_SECUNDARIO,
+            )
+        ],
+    )
+    tarjeta_atajos = tarjeta(
+        t["hotkeys"],
+        t["hotkeys_sub"],
+        [
+            ft.Row(
+                controls=[atajo_abrir, atajo_config],
+                wrap=True,
+                spacing=12,
+            ),
+            ft.Row(
+                controls=[atajo_pantalla, atajo_audio],
+                wrap=True,
+                spacing=12,
+            ),
+            ft.Row(
+                controls=[atajo_cerrar, atajo_cerrar_alt],
+                wrap=True,
+                spacing=12,
+            ),
+        ],
+    )
+
+    vistas_seccion = {
+        "general": ft.Column(
+            controls=[
+                tarjeta_bienvenida,
+                tarjeta_idioma,
+                tarjeta_gemini,
+                tarjeta_sistema,
+            ],
+            spacing=16,
+            visible=True,
+        ),
+        "interface": ft.Column(
+            controls=[tarjeta_interfaz],
+            spacing=16,
+            visible=False,
+        ),
+        "visual": ft.Column(
+            controls=[
+                tarjeta(t["preview"], t["preview_sub"], [vista_previa]),
+                tarjeta_visual,
+            ],
+            spacing=16,
+            visible=False,
+        ),
+        "controls": ft.Column(
+            controls=[tarjeta_atajos],
+            spacing=16,
+            visible=False,
+        ),
+        "multimedia": ft.Column(
+            controls=[tarjeta_audio, tarjeta_pantalla],
+            spacing=16,
+            visible=False,
+        ),
+        "accessibility": ft.Column(
+            controls=[tarjeta_accesibilidad],
+            spacing=16,
+            visible=False,
+        ),
+    }
+
+    botones_seccion: dict[str, ft.Button] = {}
+
+    def cambiar_seccion(e: Any) -> None:
+        clave = str(e.control.data)
+        if clave not in vistas_seccion:
+            return
+        for nombre, vista in vistas_seccion.items():
+            seleccionada = nombre == clave
+            vista.visible = seleccionada
+            botones_seccion[nombre].bgcolor = (
+                ACENTO if seleccionada else PANEL_SECUNDARIO
+            )
+        page.update()
+
+    iconos_seccion = {
+        "general": ft.Icons.AUTO_AWESOME,
+        "interface": ft.Icons.SETTINGS,
+        "visual": ft.Icons.PALETTE,
+        "controls": ft.Icons.KEYBOARD,
+        "multimedia": ft.Icons.MIC,
+        "accessibility": ft.Icons.VISIBILITY,
+    }
+    for clave in SETTINGS_SECTION_KEYS:
+        boton = ft.Button(
+            content=t[f"nav_{clave}"],
+            icon=iconos_seccion[clave],
+            data=clave,
+            width=176,
+            height=46,
+            bgcolor=ACENTO if clave == "general" else PANEL_SECUNDARIO,
+            color=TEXTO,
+            on_click=cambiar_seccion,
+        )
+        botones_seccion[clave] = boton
+
+    barra_secciones = ft.Container(
+        width=204,
+        bgcolor=PANEL,
+        border=ft.Border.all(1, BORDE),
+        border_radius=18,
+        padding=14,
+        content=ft.Column(
+            controls=[
+                ft.Text(
+                    t["sections"],
+                    size=16,
+                    weight=ft.FontWeight.BOLD,
+                    color=TEXTO,
+                ),
+                ft.Text(t["sections_sub"], size=11, color=TEXTO_SECUNDARIO),
+                ft.Divider(color=BORDE),
+                *[botones_seccion[clave] for clave in SETTINGS_SECTION_KEYS],
+            ],
+            spacing=9,
+        ),
+    )
+
+    area_seccion = ft.Column(
+        controls=[vistas_seccion[clave] for clave in SETTINGS_SECTION_KEYS],
+        spacing=0,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+
+    acciones = ft.Row(
+        controls=[
+            ft.Button(
+                content=t["save"],
+                icon=ft.Icons.SAVE,
+                bgcolor=ACENTO,
+                color=TEXTO,
+                on_click=guardar,
+            ),
+            ft.OutlinedButton(
+                content=t["restore"],
+                icon=ft.Icons.RESTART_ALT,
+                on_click=restaurar,
+            ),
+        ],
+        alignment=ft.MainAxisAlignment.END,
+    )
+
     contenido = ft.Column(
         controls=[
             ft.Row(
                 controls=[
                     logo_novalens,
                     ft.Column(
-                        controls=[
-                            titulo_principal,
-                            subtitulo_principal,
-                        ],
+                        controls=[titulo_principal, subtitulo_principal],
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Text(APP_VERSION, color=TEXTO, bgcolor=ACENTO, weight=ft.FontWeight.BOLD),
+                    ft.Text(
+                        APP_VERSION,
+                        color=TEXTO,
+                        bgcolor=ACENTO,
+                        weight=ft.FontWeight.BOLD,
+                    ),
                 ],
                 spacing=14,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             estado,
-            tarjeta_bienvenida,
-            tarjeta(t["language"], t["language_note"], [idioma]),
-            tarjeta(
-                t["gemini"],
-                t["gemini_sub"],
-                [
-                    campo_api_key,
-                    ft.Text(
-                        t["api_ready"] if api_key_actual else t["api_missing"],
-                        size=12,
-                        color=EXITO if api_key_actual else TEXTO_SECUNDARIO,
-                    ),
-                    ft.Text(t["api_privacy"], size=12, color=TEXTO_SECUNDARIO),
-                ],
-            ),
-            tarjeta(t["preview"], t["preview_sub"], [vista_previa]),
-            tarjeta(
-                t["appearance"],
-                t["appearance_sub"],
-                [
-                    ft.Row(controls=[color_principal, color_texto, color_secundario], wrap=True, spacing=12),
-                    ft.Row(controls=[color_borde, posicion, modo_visual], wrap=True, spacing=12),
-                    fila_slider(t["transparency"], transparencia, "%"),
-                    fila_slider(t["font_size"], fuente, "px"),
-                    fila_slider(t["radius"], radio, "px"),
-                    fila_slider(t["margin"], margen, "px"),
-                ],
-            ),
-            tarjeta(
-                t["behavior"],
-                t["behavior_sub"],
-                [
-                    fila_slider(t["visible_time"], tiempo, "s"),
-                    click_through,
-                    burbuja_control,
-                    desbloquear_burbujas,
-                    ft.Text(
-                        t["unlock_bubbles_help"],
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
-                ],
-            ),
-            tarjeta(
-                t["audio"],
-                t["audio_sub"],
-                [
-                    audio_habilitado,
-                    fila_slider(t["audio_duration"], duracion_audio, "s"),
-                    indicador_audio,
-                    ft.Text(
-                        t["audio_privacy"].format(shortcut=atajos["audio"]),
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
-                ],
-            ),
-            tarjeta(
-                t["screen_capture"],
-                t["screen_capture_sub"],
-                [
-                    ft.Text(
-                        t["screen_region_help"].format(shortcut=atajos["screen"]),
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    )
-                ],
-            ),
-            tarjeta(
-                t["hotkeys"],
-                t["hotkeys_sub"],
-                [
-                    ft.Row(controls=[atajo_abrir, atajo_config], wrap=True, spacing=12),
-                    ft.Row(controls=[atajo_pantalla, atajo_audio], wrap=True, spacing=12),
-                    ft.Row(controls=[atajo_cerrar, atajo_cerrar_alt], wrap=True, spacing=12),
-                ],
-            ),
-            tarjeta(
-                t["system"],
-                t["system_sub"],
-                [
-                    inicio_windows,
-                    ft.Divider(color=BORDE),
-                    ft.Text(
-                        t["reset_help"],
-                        size=12,
-                        color=TEXTO_SECUNDARIO,
-                    ),
-                    ft.OutlinedButton(
-                        content=t["reset_app"],
-                        icon=ft.Icons.RESTART_ALT_ROUNDED,
-                        on_click=reiniciar_app,
-                    ),
-                ],
-            ),
             ft.Row(
                 controls=[
-                    ft.Button(content=t["save"], icon=ft.Icons.SAVE, bgcolor=ACENTO, color=TEXTO, on_click=guardar),
-                    ft.OutlinedButton(content=t["restore"], icon=ft.Icons.RESTART_ALT, on_click=restaurar),
+                    barra_secciones,
+                    ft.Container(content=area_seccion, expand=True),
                 ],
-                alignment=ft.MainAxisAlignment.END,
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                expand=True,
             ),
+            acciones,
         ],
         spacing=16,
-        scroll=ft.ScrollMode.AUTO,
         expand=True,
     )
 
