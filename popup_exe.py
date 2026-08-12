@@ -28,6 +28,7 @@ from popup_layout import (
     wait_and_snap_native_window_geometry,
 )
 from reporting import build_bug_report_url
+from runtime_control import write_bridge_response
 
 
 if len(sys.argv) < 2:
@@ -545,12 +546,18 @@ async def main(page: ft.Page) -> None:
         )
         return "\n\n".join(partes)
 
-    async def enviar_pregunta(e=None) -> None:
+    async def enviar_pregunta(e=None, bridge_request_id: str = "") -> None:
         nonlocal procesando
         nonlocal respuesta_actual
         nonlocal altura_actual
 
         if procesando or cerrando:
+            if bridge_request_id:
+                write_bridge_response(
+                    bridge_request_id,
+                    "busy",
+                    "NovaLens is already processing another request.",
+                )
             return
 
         nueva_pregunta = (campo_pregunta.value or "").strip()
@@ -559,6 +566,12 @@ async def main(page: ft.Page) -> None:
             mensaje_estado.value = tr("write_first")
             page.update()
             reiniciar_temporizador()
+            if bridge_request_id:
+                write_bridge_response(
+                    bridge_request_id,
+                    "error",
+                    "A question is required.",
+                )
             return
 
         cancelar_temporizador()
@@ -597,6 +610,12 @@ async def main(page: ft.Page) -> None:
                 int(page.window.width or ancho_popup),
             )
             await sincronizar_geometria(altura_actual)
+            if bridge_request_id:
+                write_bridge_response(
+                    bridge_request_id,
+                    "completed",
+                    nueva_respuesta,
+                )
 
         except Exception as error:
             # Backend failures are displayed but never stored as conversation
@@ -604,6 +623,12 @@ async def main(page: ft.Page) -> None:
             respuesta_actual = str(error)
             texto_respuesta.value = limpiar_markdown_basico(respuesta_actual)
             mensaje_estado.value = tr("error_occurred")
+            if bridge_request_id:
+                write_bridge_response(
+                    bridge_request_id,
+                    "error",
+                    respuesta_actual,
+                )
 
         finally:
             procesando = False
@@ -700,6 +725,25 @@ async def main(page: ft.Page) -> None:
                         elif comando == "quit":
                             await cerrar_totalmente()
                             return
+                        elif comando == "bridge_ask":
+                            request_id = str(
+                                datos.get("bridge_request_id", "")
+                            ).strip()[:80]
+                            question = str(datos.get("question", ""))[:20_000]
+                            if not request_id or not question.strip():
+                                if request_id:
+                                    write_bridge_response(
+                                        request_id,
+                                        "error",
+                                        "The bridge request is invalid.",
+                                    )
+                                continue
+                            await activar_popup()
+                            campo_pregunta.value = question
+                            page.update()
+                            await enviar_pregunta(
+                                bridge_request_id=request_id,
+                            )
 
             except (OSError, ValueError, json.JSONDecodeError):
                 pass

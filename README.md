@@ -82,6 +82,7 @@ Neither file is included in the release package or committed to this repository.
 - English and Spanish interface localization.
 - Optional startup with Windows.
 - Local API-key and settings storage.
+- Optional local Harvis companion bridge for text questions, screen selection, and recent-audio requests.
 
 ## Default Hotkeys
 
@@ -124,6 +125,12 @@ Nova Lens includes a persistent control bubble with **Open**, **Close**, and **R
 
 In Settings, enable **Unlock floating bubbles to move them**, drag the microphone indicator or the Open / Close / Reset bubble, and press **Save changes**. Their positions are stored locally and restored on the next launch.
 
+### Harvis companion bridge
+
+Compatible Harvis builds can open Nova Lens, send it a text question, start the screen-region selector, or request analysis of the configured recent-audio buffer. The bridge exchanges bounded same-user JSON messages under `%APPDATA%\NovaLens`; it does not open a network port and does not share either application's Gemini API key.
+
+Nova Lens ignores malformed, unsupported, oversized, or stale bridge requests. Text questions use the normal popup and backend, while screen and audio requests reuse their existing user-visible flows. Both applications must contain compatible bridge code for these commands to work.
+
 ## Privacy and Security
 
 - Your Gemini API key is stored locally in `%APPDATA%\NovaLens\.env`.
@@ -136,6 +143,7 @@ In Settings, enable **Unlock floating bubbles to move them**, drag the microphon
 - Closing Nova Lens stops the microphone stream and clears the in-memory audio buffer.
 - Never include API keys in screenshots, logs, issues, or public repositories.
 - The in-app report button only opens the official Discord destination; Nova Lens never submits a report automatically.
+- Harvis bridge requests remain on the same Windows user account, are bounded to 20,000 characters, and are rejected after a short freshness window.
 
 Do not run Nova Lens around private conversations unless everyone present understands that the rolling microphone buffer is active.
 
@@ -148,6 +156,7 @@ Do not run Nova Lens around private conversations unless everyone present unders
 - Video analysis is not implemented.
 - AI answers and transcriptions may be incorrect.
 - Gemini access depends on the user's Google project, API key status, quota, and service availability.
+- The optional Harvis bridge requires a compatible Harvis installation and is not a remote-control interface.
 
 ## Project Structure
 
@@ -198,7 +207,7 @@ NovaLens/
 - `audio_indicator.py`: movable microphone activity bubble.
 - `control_bubble.py`: persistent Open / Close / Reset control bubble with heartbeat-based visibility recovery.
 - `bubble_layout.py`: local floating-bubble position and unlock-state management.
-- `runtime_control.py`: local commands and heartbeat state shared by the background process and control bubble.
+- `runtime_control.py`: local commands, heartbeat state, and bounded same-user Harvis bridge messages.
 - `restart_prompt.py`: post-reset recovery prompt and optional Discord-report flow.
 - `native_clickthrough.py`: native Windows click-through protection.
 - `rolling_audio.py`: circular in-memory microphone buffer.

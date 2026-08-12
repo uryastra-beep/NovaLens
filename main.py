@@ -29,8 +29,12 @@ from runtime_control import (
     ACTION_CLOSE_POPUP,
     ACTION_OPEN_POPUP,
     ACTION_RESTART_APP,
+    BRIDGE_ACTIONS,
+    BRIDGE_MAX_TEXT_CHARACTERS,
     RESTARTED_FLAG,
     RESTART_HELPER_FLAG,
+    bridge_request_path,
+    write_bridge_response,
 )
 
 
@@ -208,10 +212,11 @@ def asegurar_instancia_unica() -> None:
 # COMMUNICATION WITH popup.py
 # ══════════════════════════════════════════════
 
-def enviar_comando(comando: str) -> None:
+def enviar_comando(comando: str, **extras: object) -> None:
     datos = {
         "id": time.time_ns(),
         "command": comando,
+        **extras,
     }
 
     with bloqueo_control:
@@ -258,6 +263,97 @@ def eliminar_archivos_control() -> None:
         ARCHIVO_SALUD_BURBUJA,
     ):
         eliminar_archivo_sesion(ruta)
+
+
+def vigilar_puente_harvis() -> None:
+    """Process bounded same-user requests from the local Harvis companion."""
+
+    request_path = bridge_request_path()
+    last_request_id = ""
+
+    while not novalens_cerrando.wait(0.15):
+        try:
+            payload = json.loads(request_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict) or payload.get("version") != 1:
+            continue
+
+        raw_request_id = str(payload.get("id", "")).strip()
+        request_id = raw_request_id[:80]
+        action = str(payload.get("action", "")).strip().casefold()
+        raw_text = payload.get("text", "")
+        text = raw_text if isinstance(raw_text, str) else ""
+        text_too_long = len(text) > BRIDGE_MAX_TEXT_CHARACTERS
+        try:
+            created_at = float(payload.get("created_at", 0.0))
+        except (TypeError, ValueError):
+            created_at = 0.0
+
+        if (
+            not request_id
+            or len(raw_request_id) > 80
+            or request_id == last_request_id
+            or action not in BRIDGE_ACTIONS
+            or abs(time.time() - created_at) > 120.0
+        ):
+            continue
+        last_request_id = request_id
+
+        # Remove only the request that was just accepted. Checking the ID again
+        # avoids deleting a newer request that another process atomically wrote
+        # after this watcher completed its first read.
+        try:
+            current_payload = json.loads(request_path.read_text(encoding="utf-8"))
+            if str(current_payload.get("id", "")) == request_id:
+                request_path.unlink(missing_ok=True)
+        except (AttributeError, OSError, json.JSONDecodeError):
+            pass
+
+        if (action == "ask" and not isinstance(raw_text, str)) or text_too_long:
+            write_bridge_response(
+                request_id,
+                "error",
+                "The NovaLens bridge request is invalid or too large.",
+            )
+            continue
+
+        if action in {"ask", "screen", "audio"} and not cargar_api_key():
+            abrir_configuracion()
+            write_bridge_response(
+                request_id,
+                "error",
+                "NovaLens requires a configured Gemini API key.",
+            )
+            continue
+
+        if action == "open":
+            activar_popup()
+            write_bridge_response(request_id, "completed", "NovaLens popup opened.")
+        elif action == "ask":
+            if not text.strip():
+                write_bridge_response(request_id, "error", "A question is required.")
+                continue
+            activar_popup()
+            enviar_comando(
+                "bridge_ask",
+                bridge_request_id=request_id,
+                question=text,
+            )
+        elif action == "screen":
+            analizar_pantalla()
+            write_bridge_response(
+                request_id,
+                "started",
+                "NovaLens screen-region selection started.",
+            )
+        elif action == "audio":
+            responder_audio_anterior()
+            write_bridge_response(
+                request_id,
+                "started",
+                "NovaLens recent-audio analysis started.",
+            )
 
 
 def reiniciar_sesion_posiciones_burbujas() -> None:
@@ -1295,6 +1391,11 @@ def main() -> None:
 
     threading.Thread(
         target=vigilar_acciones_burbuja,
+        daemon=True,
+    ).start()
+
+    threading.Thread(
+        target=vigilar_puente_harvis,
         daemon=True,
     ).start()
 
